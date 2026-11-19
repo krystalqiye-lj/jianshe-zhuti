@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.23';
+  const VERSION = '0.4.24';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -4045,7 +4045,7 @@ export function releaseThemeSettings() {
   function preferences() {
     const context = ctx();
     if (!context) return {};
-    const defaults = {version:VERSION, enabled:false, pinned:[], backgrounds:{}, notes:{}, stats:{}, greetingNames:{}, originalThemes:null};
+    const defaults = {version:VERSION, enabled:false, lastChats:{}, pinned:[], backgrounds:{}, notes:{}, stats:{}, greetingNames:{}, originalThemes:null};
     context.extensionSettings[KEY] ||= defaults;
     const value = context.extensionSettings[KEY];
     for (const [key, initial] of Object.entries(defaults)) if (value[key] === undefined) value[key] = initial;
@@ -4083,13 +4083,68 @@ export function releaseThemeSettings() {
   function description(c) { return plain(c.data?.creator_notes || c.data?.description || c.description || '').replace(/\s+/g,' ').slice(0,180); }
   function tags(c) { return (c.data?.tags || c.tags || []).slice(0,8); }
   function roundLabel(c) { const value = preferences().stats[c.avatar]; return value && Number.isFinite(value.rounds) ? `${value.rounds} 轮` : '统计中'; }
-  async function sessions(c) {
-    if (sessionData.has(c.avatar)) return sessionData.get(c.avatar);
-    const data = await post('/api/characters/chats',{avatar_url:c.avatar,metadata:true});
-    const list = data?.error ? [] : Object.values(data || {}).filter(x=>x?.file_name);
-    list.sort((a,b)=>String(b.last_mes || b.file_name).localeCompare(String(a.last_mes || a.file_name)));
-    sessionData.set(c.avatar,list);
-    return list;
+  const archiveFacts = new Map();
+  function hasUserMessage(messages) {
+    return Array.isArray(messages) && messages.some(m=>m?.is_user && !m.is_system);
+  }
+  function archiveTime(file) {
+    const value=file.last_mes;
+    if(typeof value==='number')return value;
+    const time=Date.parse(value);
+    if(Number.isFinite(time))return time;
+    const stamp=String(value||file.file_name).match(/(\d{4})-(\d{2})-(\d{2})@(\d+)h(\d+)m(\d+)s(\d+)?/);
+    return stamp?new Date(+stamp[1],+stamp[2]-1,+stamp[3],+stamp[4],+stamp[5],+stamp[6],+(stamp[7]||0)).getTime():0;
+  }
+  async function sessions(c, includePreviews=false, fresh=false) {
+    if(fresh)sessionData.delete(c.avatar);
+    if(!sessionData.has(c.avatar)) {
+      const job=(async()=>{
+        const data=await post('/api/characters/chats',{avatar_url:c.avatar,metadata:true});
+        const files=data?.error?[]:Object.values(data||{}).filter(f=>f?.file_name);
+        const list=[];
+        for(const file of files) {
+          const key=JSON.stringify([c.avatar,file.file_name]);
+          const fingerprint=JSON.stringify([file.last_mes,file.chat_items,file.file_size]);
+          let facts=archiveFacts.get(key);
+          if(facts?.fingerprint!==fingerprint) {
+            const messages=await post('/api/chats/get',{avatar_url:c.avatar,file_name:chatFile(file.file_name)});
+            if(!Array.isArray(messages))throw Error('存档读取失败，请稍后再试。');
+            facts={fingerprint,started:hasUserMessage(messages),rounds:countRounds(messages)};
+            archiveFacts.set(key,facts);
+          }
+          list.push({...file,...facts});
+        }
+        return list.sort((a,b)=>archiveTime(b)-archiveTime(a)||b.file_name.localeCompare(a.file_name));
+      })();
+      sessionData.set(c.avatar,job);
+      job.catch(()=>{if(sessionData.get(c.avatar)===job)sessionData.delete(c.avatar);});
+    }
+    const list=await sessionData.get(c.avatar);
+    return includePreviews?list:list.filter(f=>f.started);
+  }
+  async function rememberChat() {
+    const context=ctx(), c=selected(), file=chatFile(context?.chatId);
+    if(context?.groupId!=null || !c || !file || !hasUserMessage(context.chat))return;
+    if(preferences().lastChats[c.avatar]===file)return;
+    preferences().lastChats[c.avatar]=file;
+    context.saveSettingsDebounced();
+    // Persist the selected file in the card too, so the original interface resumes it.
+    await W.fetch('/api/characters/merge-attributes',{
+      method:'POST',headers:context.getRequestHeaders(),body:JSON.stringify({avatar:c.avatar,chat:file})
+    }).then(r=>{if(!r.ok)throw Error(r.status);}).catch(error=>console.warn('[建设主题] 保存最近存档',error));
+  }
+  function mountArchiveResume(context) {
+    const changed=async()=>{sessionData.clear();await rememberChat();};
+    const renamed=event=>{
+      const avatar=event?.avatarId, names=preferences().lastChats;
+      if(avatar && names[avatar]===chatFile(event.oldFileName))names[avatar]=chatFile(event.newFileName);
+      changed();context.saveSettingsDebounced();
+    };
+    for(const [name,handler] of Object.entries({CHAT_CHANGED:changed,MESSAGE_SENT:changed,CHAT_RENAMED:renamed,CHAT_DELETED:changed})) {
+      const type=context.eventTypes[name];
+      if(type){context.eventSource.on(type,handler);listeners.push(()=>context.eventSource.removeListener(type,handler));}
+    }
+    rememberChat();
   }
   async function updateCount(c, force = false) {
     if (countPromises.has(c.avatar)) return countPromises.get(c.avatar);
@@ -4098,14 +4153,13 @@ export function releaseThemeSettings() {
       const fingerprint = JSON.stringify(list.map(x=>[x.file_name,x.last_mes,x.chat_items,x.file_size]));
       const cache = preferences().stats[c.avatar];
       if (!force && cache?.fingerprint === fingerprint) return;
-      let rounds = 0;
-      for (const file of list) {
-        const data = await post('/api/chats/get',{avatar_url:c.avatar,file_name:chatFile(file.file_name)});
-        rounds += countRounds(data);
-      }
+      const rounds=list.reduce((sum,file)=>sum+file.rounds,0);
       preferences().stats[c.avatar] = {rounds,chats:list.length,fingerprint,updated:new Date().toISOString(),last:list[0]?.last_mes || ''};
       ctx().saveSettingsDebounced();
-      if (root) for (const el of root.querySelectorAll('[data-round-avatar]')) if (el.dataset.roundAvatar === c.avatar) el.textContent = `${rounds} 轮`;
+      if(root) {
+        for(const el of root.querySelectorAll('[data-round-avatar]'))if(el.dataset.roundAvatar===c.avatar)el.textContent=rounds+' 轮';
+        for(const el of root.querySelectorAll('[data-archive-count]'))if(el.dataset.archiveCount===c.avatar)el.textContent=list.length+' 个存档';
+      }
     })().catch(error=>{console.warn('[建设主题] 轮数统计',error); if(root)for(const el of root.querySelectorAll('[data-round-avatar]'))if(el.dataset.roundAvatar===c.avatar)el.textContent='统计失败';}).finally(()=>countPromises.delete(c.avatar));
     countPromises.set(c.avatar,job); return job;
   }
@@ -4142,7 +4196,7 @@ export function releaseThemeSettings() {
     return title(creator?'我的角色':'首页',creator?'<button class="lj-primary" data-action="create-char">新建角色</button><button class="lj-soft" data-action="import-char">导入角色卡</button>':searchBox()) + (creator?'':homeBanner()) + (creator?`<div class="lj-row" style="margin-bottom:20px">${searchBox()}</div>`:'')+cards();
   }
   function recentPage() {
-    return title('最近对话',searchBox('搜索角色或故事'))+`<div class="lj-list">${sortedCharacters(true).map(({c,id})=>`<article class="lj-session-card"><div class="lj-session-head" data-action="toggle-sessions" data-id="${id}" role="button" tabindex="0"><img src="${escapeHtml(thumb(c))}" alt=""><div class="lj-session-info"><h3>${escapeHtml(c.name)}</h3><div class="lj-muted lj-small"><span data-round-avatar="${escapeHtml(c.avatar)}">${roundLabel(c)}</span> · ${preferences().stats[c.avatar]?.chats ?? '—'} 个存档</div></div><button class="lj-iconbutton ${preferences().pinned.includes(c.avatar)?'lj-badge':''}" data-action="pin" data-id="${id}" aria-pressed="${preferences().pinned.includes(c.avatar)}" aria-label="${preferences().pinned.includes(c.avatar)?'取消置顶':'置顶'} ${escapeHtml(c.name)}">${icon('pin')}</button><span>⌄</span></div><div class="lj-session-content" data-sessions="${id}" hidden></div></article>`).join('') || '<div class="lj-empty">暂无对话</div>'}</div>`;
+    return title('最近对话',searchBox('搜索角色或故事'))+`<div class="lj-list">${sortedCharacters(true).map(({c,id})=>`<article class="lj-session-card"><div class="lj-session-head" data-action="toggle-sessions" data-id="${id}" role="button" tabindex="0"><img src="${escapeHtml(thumb(c))}" alt=""><div class="lj-session-info"><h3>${escapeHtml(c.name)}</h3><div class="lj-muted lj-small"><span data-round-avatar="${escapeHtml(c.avatar)}">${roundLabel(c)}</span> · <span data-archive-count="${escapeHtml(c.avatar)}">${preferences().stats[c.avatar]?.chats ?? '—'} 个存档</span></div></div><button class="lj-iconbutton ${preferences().pinned.includes(c.avatar)?'lj-badge':''}" data-action="pin" data-id="${id}" aria-pressed="${preferences().pinned.includes(c.avatar)}" aria-label="${preferences().pinned.includes(c.avatar)?'取消置顶':'置顶'} ${escapeHtml(c.name)}">${icon('pin')}</button><span>⌄</span></div><div class="lj-session-content" data-sessions="${id}" hidden></div></article>`).join('') || '<div class="lj-empty">暂无对话</div>'}</div>`;
   }
   function worldsPage() {
     const names=worldBookNames();
@@ -4226,13 +4280,35 @@ export function releaseThemeSettings() {
     enterPage('workspace',origin);
     workspaceKey=screenConfig[key]?key:'extensions';workspaceTab='';workspaceSearch='';render();
   }
+  let openingCharacter=false;
   async function openCharacter(id,file){
+    if(openingCharacter)return;
+    openingCharacter=true;
     const origin=capturePage(), revision=navigationRevision;
-    if(!await selectForPage(id,false) || revision!==navigationRevision)return;
-    if(file)await ctx().openCharacterChat(chatFile(file));
-    if(revision!==navigationRevision)return;
-    toolOrigin=null;
-    navigate('chat',origin);
+    try {
+      const context=ctx(), initial=context.characters[id];
+      if(!initial)return;
+      if(context.streamingProcessor){toast('请先等待当前回复完成。');return;}
+      if(initial.shallow)await context.unshallowCharacter(id);
+      const c=ctx().characters[id];
+      if(!c || c.avatar!==initial.avatar || revision!==navigationRevision)return;
+      // Resolve an existing file before selecting the character. Loading a missing
+      // card.chat makes the host immediately create and save another greeting.
+      const list=await sessions(c,true,true), started=list.filter(f=>f.started);
+      const names=[c.chat,preferences().lastChats[c.avatar]].map(chatFile);
+      let target=file?list.find(f=>chatFile(f.file_name)===chatFile(file)):
+        names.map(name=>started.find(f=>chatFile(f.file_name)===name)).find(Boolean)||started[0]||
+        list.find(f=>chatFile(f.file_name)===chatFile(c.chat))||list[0];
+      if(file && !target)throw Error('这个存档已被移走，请刷新存档列表。');
+      if(revision!==navigationRevision)return;
+      if(target && String(ctx().characterId)!==String(id))c.chat=chatFile(target.file_name);
+      if(!await selectForPage(id,false) || revision!==navigationRevision)return;
+      if(target && chatFile(ctx().chatId)!==chatFile(target.file_name))await ctx().openCharacterChat(chatFile(target.file_name));
+      if(revision!==navigationRevision)return;
+      await rememberChat();
+      toolOrigin=null;
+      navigate('chat',origin);
+    } finally {openingCharacter=false;}
   }
   async function toggleSessions(id) {
     const el=root.querySelector(`[data-sessions="${id}"]`);if(!el)return;
@@ -4717,7 +4793,7 @@ export function releaseThemeSettings() {
     on(W,'resize',updateVh);if(W.visualViewport)on(W.visualViewport,'resize',updateVh);updateVh();
     const context=ctx();
     const refresh=()=>{W.clearTimeout(refreshTimer);refreshTimer=W.setTimeout(()=>{sessionData.clear();syncMemoryPrompt();if(route==='chat'&&!selected()&&!returningPage)openPrimaryPage('home');else render();scheduleCounts();},350);};
-    for(const name of ['APP_READY','CHARACTER_PAGE_LOADED','CHAT_CHANGED','CHARACTER_EDITED','CHARACTER_DELETED','CHARACTER_DUPLICATED','CHARACTER_RENAMED','MESSAGE_RECEIVED','MESSAGE_DELETED','MESSAGE_SWIPED','PRESET_CHANGED','OAI_PRESET_CHANGED_AFTER']){
+    for(const name of ['APP_READY','CHARACTER_PAGE_LOADED','CHAT_CHANGED','CHARACTER_EDITED','CHARACTER_DELETED','CHARACTER_DUPLICATED','CHARACTER_RENAMED','MESSAGE_SENT','GENERATION_ENDED','MESSAGE_RECEIVED','MESSAGE_DELETED','MESSAGE_SWIPED','PRESET_CHANGED','OAI_PRESET_CHANGED_AFTER']){
       const type=context.eventTypes[name];if(type){context.eventSource.on(type,refresh);listeners.push(()=>context.eventSource.removeListener(type,refresh));}
     }
     for(const name of ['CHAT_CHANGED','MESSAGE_SWIPED','MESSAGE_DELETED']){const type=context.eventTypes[name];if(type){context.eventSource.on(type,restoreMemorySnapshot);listeners.push(()=>context.eventSource.removeListener(type,restoreMemorySnapshot));}}
@@ -4727,7 +4803,7 @@ export function releaseThemeSettings() {
       context.eventSource.on(worldSettingsEvent,syncBooks);
       listeners.push(()=>context.eventSource.removeListener(worldSettingsEvent,syncBooks));
     }
-    mountChatReading(context);mountPairing(context);mountCardWidgets();mountStoryMemory(context);mountBooks();mountBanner();
+    mountArchiveResume(context);mountChatReading(context);mountPairing(context);mountCardWidgets();mountStoryMemory(context);mountBooks();mountBanner();
     render();scheduleCounts();syncMemoryPrompt();
     observeDialogs();observeMessages();loadControlLabels();loadRoleWorlds();
   }
