@@ -299,7 +299,10 @@ body.lj-original-view :is(#lj-root,#lj-portal,#sheld,.lj-native-tools,.lj-input-
 body.lj-active.lj-original-view {--lj-original-top:calc(52px + env(safe-area-inset-top))}
 body.lj-active.lj-original-view #top-settings-holder{
   inset:0!important;width:100%!important;height:var(--lj-height)!important;max-height:none!important;
-  transform:none!important;overflow:visible!important;z-index:100!important;
+  transform:none!important;overflow:visible!important;visibility:visible!important;z-index:100!important;
+}
+body.lj-active.lj-original-view #top-settings-holder > :not(:has(> .lj-original-panel)){
+  visibility:hidden!important;
 }
 body.lj-active.lj-original-view #top-settings-holder .drawer-content.lj-original-panel {
   display:block!important; visibility:visible!important;pointer-events:auto!important;
