@@ -306,6 +306,8 @@ body.lj-active.lj-original-view #top-settings-holder .drawer-content.lj-original
   position:fixed!important;inset:var(--lj-original-top) 0 auto!important;
   width:100vw!important;max-width:100vw!important;min-width:0!important;
   height:calc(var(--lj-height) - var(--lj-original-top))!important;max-height:none!important;
+  /* TauriTavern clips closed drawers even when their display is overridden. */
+  clip-path:none!important;
   transition:none!important;touch-action:pan-y pinch-zoom;
   margin:0!important;padding:clamp(12px,3vw,36px) max(14px,calc((100vw - 1120px)/2)) max(24px,env(safe-area-inset-bottom))!important;
   box-sizing:border-box!important;overflow:auto!important;overscroll-behavior:contain;
