@@ -4146,22 +4146,27 @@ export function releaseThemeSettings() {
     }
     rememberChat();
   }
+  function applyArchiveCount(c,list,force=false) {
+    const fingerprint=JSON.stringify(list.map(x=>[x.file_name,x.last_mes,x.chat_items,x.file_size]));
+    const cache=preferences().stats[c.avatar];
+    if(!force && cache?.fingerprint===fingerprint)return;
+    const rounds=list.reduce((sum,file)=>sum+file.rounds,0);
+    preferences().stats[c.avatar]={rounds,chats:list.length,fingerprint,updated:new Date().toISOString(),last:list[0]?.last_mes||''};
+    ctx().saveSettingsDebounced();
+    if(root) {
+      for(const el of root.querySelectorAll('[data-round-avatar]'))if(el.dataset.roundAvatar===c.avatar)el.textContent=rounds+' 轮';
+      for(const el of root.querySelectorAll('[data-archive-count]'))if(el.dataset.archiveCount===c.avatar)el.textContent=list.length+' 个存档';
+    }
+  }
   async function updateCount(c, force = false) {
-    if (countPromises.has(c.avatar)) return countPromises.get(c.avatar);
-    const job = (async()=>{
-      const list = await sessions(c);
-      const fingerprint = JSON.stringify(list.map(x=>[x.file_name,x.last_mes,x.chat_items,x.file_size]));
-      const cache = preferences().stats[c.avatar];
-      if (!force && cache?.fingerprint === fingerprint) return;
-      const rounds=list.reduce((sum,file)=>sum+file.rounds,0);
-      preferences().stats[c.avatar] = {rounds,chats:list.length,fingerprint,updated:new Date().toISOString(),last:list[0]?.last_mes || ''};
-      ctx().saveSettingsDebounced();
-      if(root) {
-        for(const el of root.querySelectorAll('[data-round-avatar]'))if(el.dataset.roundAvatar===c.avatar)el.textContent=rounds+' 轮';
-        for(const el of root.querySelectorAll('[data-archive-count]'))if(el.dataset.archiveCount===c.avatar)el.textContent=list.length+' 个存档';
-      }
+    if(countPromises.has(c.avatar))return countPromises.get(c.avatar);
+    const job=(async()=>{
+      const request=sessions(c), source=sessionData.get(c.avatar);
+      const list=await request;
+      // Ignore a scan invalidated by a message or a chat switch while it was loading.
+      if(source===sessionData.get(c.avatar))applyArchiveCount(c,list,force);
     })().catch(error=>{console.warn('[建设主题] 轮数统计',error); if(root)for(const el of root.querySelectorAll('[data-round-avatar]'))if(el.dataset.roundAvatar===c.avatar)el.textContent='统计失败';}).finally(()=>countPromises.delete(c.avatar));
-    countPromises.set(c.avatar,job); return job;
+    countPromises.set(c.avatar,job);return job;
   }
   function scheduleCounts() {
     for (const {c} of characterEntries()) countQueue = countQueue.then(()=>disposed ? null : updateCount(c));
@@ -4316,6 +4321,7 @@ export function releaseThemeSettings() {
     el.innerHTML='<p class="lj-muted lj-small">正在读取存档…</p>';
     const c=ctx().characters[id],list=await sessions(c);
     if(!el.isConnected)return;
+    applyArchiveCount(c,list);
     el.innerHTML=sessionItems(list,id)||'<p class="lj-muted lj-small">暂无存档，点击角色开始聊天。</p>';await labelArchiveOpenings(el,list,id);
   }
   function sessionItems(list,id) { return list.map(x=>`<button class="lj-session-item" data-action="open-session" data-id="${id}" data-file="${escapeHtml(x.file_name)}"><strong>${escapeHtml(archiveTitle(x.file_name))}</strong><small><span data-archive-opening></span>${escapeHtml(plain(x.mes || x.preview || '').slice(0,85))} · ${Number(x.chat_items)||0} 条消息</small></button>`).join(''); }
