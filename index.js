@@ -1,4 +1,10 @@
-import { eventSource, event_types } from '/scripts/events.js';
+import { eventSource, event_types, getOneCharacter } from '/script.js';
+import { extensionNames } from '/scripts/extensions.js';
+import { world_names } from '/scripts/world-info.js';
+
+function worldBookNames() {
+  return Array.isArray(world_names) ? [...world_names] : [];
+}
 
 const themeExtensionId = 'third-party/' + decodeURIComponent(new URL('.', import.meta.url).pathname.split('/').filter(Boolean).pop());
 
@@ -10,7 +16,7 @@ export function releaseThemeSettings() {
   if (!saved) return;
   const disabled = new Set(settings.disabledExtensions || []);
   for (const [id, enabled] of Object.entries(saved.originalThemes || {})) {
-    if (!window.SillyTavern.getContext().getExtensionManifest?.(id)) continue;
+    if (!extensionNames.includes(id)) continue;
     if (enabled) disabled.delete(id);
     else disabled.add(id);
   }
@@ -21,7 +27,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.19';
+  const VERSION = '0.4.21';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -776,6 +782,26 @@ export function releaseThemeSettings() {
   }
   async function loadExtensionCatalog(){try{const response=await W.fetch('/api/extensions/discover');if(!response.ok)throw Error(response.status);const discovered=await response.json();extensionCatalog=await Promise.all(discovered.map(async item=>{try{const res=await W.fetch(`/scripts/extensions/${item.name}/manifest.json`);if(!res.ok)return item;return {...await res.json(),...item};}catch(_){return item;}}));refreshWorkspaceFields();}catch(error){extensionCatalog=[];toast('扩展列表读取失败：'+error.message);}finally{extensionLoad=null;}}
   function extensionInstallModal(){modal('安装扩展',`<label>扩展仓库地址</label><input id="lj-extension-url" placeholder="https://github.com/作者/仓库"><p class="lj-muted lj-small">安装到当前用户。安装完成后刷新页面。</p><div class="lj-form-actions"><button class="lj-primary" data-action="extension-install-submit">安装</button></div>`,'560px');}
+  function globalBookChoices(){
+    const source=$('#world_info');
+    if(!source)return '<p class="lj-muted">正在读取世界书…</p>';
+    const options=Array.from(source.options).filter(option=>option.value!=='');
+    const query=workspaceSearch.trim().toLowerCase();
+    const visible=options.filter(option=>option.label.toLowerCase().includes(query));
+    const rows=visible.map(option=>
+      `<label class="lj-global-book"><input type="checkbox" data-global-book="${escapeHtml(option.label)}" ${option.selected?'checked':''} ${source.disabled||option.disabled?'disabled':''}><span>${escapeHtml(option.label)}</span></label>`);
+    const empty=options.length?'没有找到这本世界书。':'还没有可选的世界书。';
+    return `<section class="lj-global-books" aria-label="所有角色共用的书"><p class="lj-muted">勾选后会在所有聊天中启用。全部留空时，各角色仍使用各自绑定的世界书。</p>
+      <div class="lj-global-book-count" role="status">已选 ${options.filter(o=>o.selected).length} 本 · 共 ${options.length} 本${query?' · 找到 '+visible.length+' 本':''}</div>
+      <div class="lj-global-book-list">${rows.join('')||`<p class="lj-muted">${empty}</p>`}</div></section>`;
+  }
+  function toggleGlobalBook(control){
+    const source=$('#world_info');
+    const option=source && Array.from(source.options).find(o=>o.value!=='' && o.label===control.dataset.globalBook);
+    if(!option || source.disabled || option.disabled){refreshWorkspaceFields();return;}
+    option.selected=control.checked;
+    source.dispatchEvent(new W.Event('change',{bubbles:true}));
+  }
   function workspaceBody(){
     const config=screenConfig[workspaceKey],container=$(config.source);
     if(workspaceKey==='generation'){
@@ -805,15 +831,16 @@ export function releaseThemeSettings() {
     }
     if(workspaceKey==='backgrounds')return backgroundWorkspace(container);
     if(workspaceKey==='worlds'){
-      const select=$('#world_info');
-      return workspaceTab==='所有角色共用的书'?(select?'<p class="lj-muted">这里选中的书会在所有角色的聊天中参与匹配。可以全部留空。</p>'+mirrorField(select):'世界书列表正在加载。'):mirrorGroup($('#wiActivationSettings'));
+      return workspaceTab==='所有角色共用的书'?globalBookChoices():mirrorGroup($('#wiActivationSettings'));
     }
     if(workspaceKey==='account')return `<section class="lj-form-section"><h2>选择要下载的备份</h2><p class="lj-muted">完整用户备份包含酒馆用户数据。主题源码备份只包含界面程序。</p><div class="lj-form-actions"><button class="lj-primary" data-action="backup-download">下载完整用户备份</button>${installedThemeIds().length?'<button class="lj-soft" data-action="theme-source-backup">下载原主题源文件备份</button>':''}</div></section>`;
     return `<section class="lj-form-section">${mirrorGroup(container)}</section>`;
   }
   function settingsWorkspace(){
     const config=screenConfig[workspaceKey],tabs=workspaceTabs();if(!tabs.includes(workspaceTab))workspaceTab=tabs[0]||'';
-    return title(escapeHtml(config.name),`${workspaceKey==='generation'?'<button class="lj-primary" data-action="preset-save-current">保存到当前使用的预设</button>':''}`)+`<p class="lj-page-subtitle">${escapeHtml(config.subtitle)}</p><div class="lj-workspace"><nav class="lj-workspace-tabs" aria-label="${escapeHtml(config.name)}分类">${tabs.map(t=>`<button class="${workspaceTab===t?'active':''}" data-action="workspace-tab" data-tab="${escapeHtml(t)}">${escapeHtml(workspaceTabTitle(t))}</button>`).join('')}</nav><div class="lj-workspace-content"><div class="lj-row lj-space lj-workspace-toolbar"><div class="lj-muted lj-small">${escapeHtml(workspaceTabTitle(workspaceTab))}</div><input type="search" id="lj-settings-search" placeholder="搜索此页设置" aria-label="搜索此页设置" value="${escapeHtml(workspaceSearch)}"></div><div id="lj-workspace-fields">${workspaceBody()}</div>${originalWorkspaceLink()}</div></div>`;
+    const choosingBooks=workspaceKey==='worlds' && workspaceTab==='所有角色共用的书';
+    const searchLabel=choosingBooks?'搜索世界书名称':'搜索此页设置';
+    return title(escapeHtml(config.name),`${workspaceKey==='generation'?'<button class="lj-primary" data-action="preset-save-current">保存到当前使用的预设</button>':''}`)+`<p class="lj-page-subtitle">${escapeHtml(config.subtitle)}</p><div class="lj-workspace"><nav class="lj-workspace-tabs" aria-label="${escapeHtml(config.name)}分类">${tabs.map(t=>`<button class="${workspaceTab===t?'active':''}" data-action="workspace-tab" data-tab="${escapeHtml(t)}">${escapeHtml(workspaceTabTitle(t))}</button>`).join('')}</nav><div class="lj-workspace-content"><div class="lj-row lj-space lj-workspace-toolbar ${choosingBooks?'lj-global-book-search':''}">${choosingBooks?'':`<div class="lj-muted lj-small">${escapeHtml(workspaceTabTitle(workspaceTab))}</div>`}<input type="search" id="lj-settings-search" placeholder="${searchLabel}" aria-label="${searchLabel}" value="${escapeHtml(workspaceSearch)}"></div><div id="lj-workspace-fields">${workspaceBody()}</div>${originalWorkspaceLink()}</div></div>`;
   }
   function changeSource(control,change=true){
     const source=fieldSources.get(control.dataset.source);if(!source?.isConnected)return;
@@ -850,6 +877,10 @@ export function releaseThemeSettings() {
     box.innerHTML=workspaceBody();
     for(const node of box.querySelectorAll('details[data-group]'))if(open.has(node.dataset.group))node.open=true;
     if(id){const field=box.querySelector('[data-source="'+id+'"]');field?.focus({preventScroll:true});if(selection&&field?.setSelectionRange)field.setSelectionRange(...selection);}
+    if(active?.hasAttribute('data-global-book')){
+      const replacement=Array.from(box.querySelectorAll('[data-global-book]')).find(el=>el.dataset.globalBook===active.dataset.globalBook);
+      replacement?.focus({preventScroll:true});
+    }
     if(main)main.scrollTop=top;
   }
   // Native popups own their validation, document ordering and per-row event handlers.
@@ -896,7 +927,7 @@ export function releaseThemeSettings() {
     const me=await W.fetch('/api/users/me',{headers:ctx().getRequestHeaders()});if(!me.ok)throw Error('无法读取当前用户');const profile=await me.json();
     const response=await W.fetch('/api/users/backup',{method:'POST',headers:ctx().getRequestHeaders(),body:JSON.stringify({handle:profile.handle})});
     if(!response.ok)throw Error('备份失败 '+response.status);
-    downloadData(`蓝酒_用户备份_${new Date().toISOString().slice(0,10)}.zip`,await response.blob(),'application/zip');toast('用户备份已生成');
+    downloadData(`用户备份_${new Date().toISOString().slice(0,10)}.zip`,await response.blob(),'application/zip');toast('用户备份已生成');
   }
   async function backupThemeSources(){
     const files={};
@@ -904,8 +935,8 @@ export function releaseThemeSettings() {
       if(!installedThemeIds().includes('third-party/'+theme))continue;
       for(const file of names){const path=`/scripts/extensions/third-party/${theme}/${file}`,response=await W.fetch(path);if(!response.ok)throw Error('读取原主题失败 '+path);files[`${theme}/${file}`]=await response.text();}
     }
-    const data={format:'lanjiu-theme-source-backup',version:1,created:new Date().toISOString(),themes:preferences().originalThemes,files};
-    downloadData('蓝酒_原主题源文件备份.json',data);
+    const data={format:'theme-source-backup',version:1,created:new Date().toISOString(),themes:preferences().originalThemes,files};
+    downloadData('原主题源文件备份.json',data);
     modal('原主题源文件备份',`<p class="lj-muted">已整理当前安装的主题核心文件。以下备份文本也可以直接复制保存。原素材目录继续保留原位。</p><textarea readonly aria-label="原主题备份文本" style="min-height:320px">${escapeHtml(JSON.stringify(data,null,2))}</textarea><p class="lj-muted lj-small">此文件包含核心源码，不包含全部图片、音频和视频素材。</p>`,'900px');
     toast('原主题核心源文件备份已生成');
   }
@@ -1137,7 +1168,7 @@ export function releaseThemeSettings() {
     const c=selected();if(c?.avatar!==avatar||!c.data?.character_book)throw Error('角色已经切换，请重新打开角色侧栏。');
     const host=await loadRoleWorlds(),id=ctx().characterId;
     if(!host||selected()?.avatar!==avatar)throw Error('暂时无法读取这张卡的内置世界书。');
-    const names=new Set(ctx().getWorldInfoNames()),base=c.data.character_book.name||c.name+'的世界书';
+    const names=new Set(worldBookNames()),base=c.data.character_book.name||c.name+'的世界书';
     let name=base,n=0;
     while(names.has(name))name=base+'（'+c.name+(++n===1?'':' '+n)+'）';
     await ctx().saveWorldInfo(name,host.convertCharacterBook(c.data.character_book),true);
@@ -1150,7 +1181,7 @@ export function releaseThemeSettings() {
     const c=selected();if(!c){toast('请从角色聊天右侧的设置中管理此角色的世界书。');return;}
     const key=pairScope(),host=await loadRoleWorlds();if(selected()?.avatar!==c.avatar||pairScope()!==key)return;
     const primary=c.data?.extensions?.world||'',chat=ctx().chatMetadata.world_info||'',extra=extraBooks(c);
-    const names=[...new Set([...ctx().getWorldInfoNames(),primary,chat,...extra].filter(Boolean))];
+    const names=[...new Set([...worldBookNames(),primary,chat,...extra].filter(Boolean))];
     const options=current=>names.map(n=>`<option ${current===n?'selected':''}>${escapeHtml(n)}</option>`).join('');
     const form=modal('管理角色和存档的世界书',`<h2>${escapeHtml(c.name)}</h2><label>角色主书（此角色的所有存档）</label><select id="lj-bind-primary"><option value="">不使用主书</option>${options(primary)}</select>
       ${host?.charSetAuxWorlds?`<details><summary>额外角色书（已选 ${extra.length} 本）</summary>${names.map(n=>`<label class="lj-extra-book"><input type="checkbox" data-extra-book value="${escapeHtml(n)}" ${extra.includes(n)?'checked':''}> ${escapeHtml(n)}</label>`).join('')}</details>`:''}
@@ -1197,7 +1228,7 @@ export function releaseThemeSettings() {
   }
   async function showStories(){if(!selected())return;await ctx().unshallowCharacter(ctx().characterId);modal('开场故事',storyCards(),'900px');}
   function editStory(index){
-    editingStoryIndex=index;const meta=storyMeta(index),text=storyResources()[index]||'',names=ctx().getWorldInfoNames();
+    editingStoryIndex=index;const meta=storyMeta(index),text=storyResources()[index]||'',names=worldBookNames();
     modal('编辑开场故事',`<div class="lj-editor-fields"><label>故事名称</label><input id="lj-story-name" value="${escapeHtml(meta.name||openingLabel(index,storyResources().length))}"><label>开场白</label><textarea id="lj-story-text" rows="12">${escapeHtml(text)}</textarea><label>此故事的聊天世界书</label><select id="lj-story-world"><option value="">沿用角色绑定</option>${names.map(n=>`<option ${n===meta.world?'selected':''}>${escapeHtml(n)}</option>`).join('')}</select><label>故事背景图地址</label><input id="lj-story-background" value="${escapeHtml(meta.background||'')}" placeholder="留空使用角色图"><label>故事阅读样式 CSS</label><textarea id="lj-story-css" rows="4" placeholder="选填，留空沿用当前角色的美化">${escapeHtml(meta.css||'')}</textarea><div class="lj-form-actions"><button class="lj-primary" data-action="story-save">保存故事</button></div></div>`);
   }
   async function saveStory(){
@@ -1206,7 +1237,7 @@ export function releaseThemeSettings() {
     const meta={...storyMeta(index),date:new Date().toISOString(),name:$('#lj-story-name').value,world:$('#lj-story-world').value,background:$('#lj-story-background').value,css:$('#lj-story-css').value};
     await post('/api/characters/merge-attributes',{avatar:c.avatar,data:{first_mes:greetings[0],alternate_greetings:greetings.slice(1)}});
     preferences().stories||={};preferences().stories[c.avatar]||={};preferences().stories[c.avatar][index]=meta;await persist(true);
-    await ctx().getOneCharacter(c.avatar);closeDialog();render();
+    await getOneCharacter(c.avatar);closeDialog();render();
     const parent=visibleDialog(),grid=parent?.querySelector('.lj-story-grid');
     if(grid)parent.querySelector('.lj-modal-content').innerHTML=(dialogName(parent)==='重启对话'?'<p>选择一个开场白，开始新的存档。</p>':'')+storyCards();toast('故事与全部开场白已保存');
   }
@@ -2641,7 +2672,7 @@ export function releaseThemeSettings() {
     const api = pairApi(await pairCommand('api'));
     const model = await pairCommand('model');
     const url = pairHasUrl(api) ? await pairCommand('api-url','',{connect:'false'}) : '';
-    const secret = await pairCommand('secret-id');
+    const secret = supportsKeySelection() ? await pairCommand('secret-id') : '';
     const proxy = pairManager(api)==='openai' ? await pairCommand('proxy') : '';
     return {api,model,url,secret,proxy};
   }
@@ -2816,11 +2847,15 @@ export function releaseThemeSettings() {
     if (pairDialog) return;
     const scope=pairScope();
     if (!scope) {toast('请先打开聊天存档。');return;}
-    const overlay=modal('预设及模型设置',`<div class="lj-pair-grid"><div class="lj-pair-body"><section class="lj-pair-left"><h2>预设选择</h2><div class="lj-pair-list" data-list="presets" role="group" aria-label="预设"></div></section>
-      <section class="lj-pair-right"><header><h2><span class="lj-wide-title">模型选择</span><span class="lj-phone-title">模型切换</span></h2><button type="button" class="lj-iconbutton" data-pair="search" aria-label="搜索模型">${icon('search')}</button></header><input type="search" placeholder="搜索模型或连接名" aria-label="搜索模型或连接名"><div class="lj-pair-filters" aria-label="模型系列"></div><div class="lj-pair-list" data-list="models" role="group" aria-label="已接入的 API"></div></section></div>
+    function pairSearch(kind,title,label,placeholder){
+      return `<header><h2>${title}</h2><button type="button" class="lj-iconbutton" data-pair="search" aria-label="${label}" aria-expanded="false" aria-controls="lj-pair-${kind}-search">${icon('search')}</button></header>
+        <input type="search" id="lj-pair-${kind}-search" placeholder="${placeholder}" aria-label="${placeholder}" hidden>`;
+    }
+    const overlay=modal('预设及模型设置',`<div class="lj-pair-grid"><div class="lj-pair-body"><section class="lj-pair-left">${pairSearch('preset','预设选择','搜索预设','搜索预设名称')}<div class="lj-pair-list" data-list="presets" role="group" aria-label="预设"></div><p class="lj-pair-empty" data-preset-empty hidden></p></section>
+      <section class="lj-pair-right">${pairSearch('model','<span class="lj-wide-title">模型选择</span><span class="lj-phone-title">模型切换</span>','搜索模型','搜索模型或连接名')}<div class="lj-pair-filters" aria-label="模型系列"></div><div class="lj-pair-list" data-list="models" role="group" aria-label="已接入的 API"></div></section></div>
       <footer><span class="lj-pair-summary" aria-live="polite">正在读取酒馆配置…</span><button type="button" class="lj-soft" data-pair="cancel">取消</button><button type="button" class="lj-primary" data-pair="confirm" disabled>确认</button></footer></div>`,'960px');
     overlay.classList.add('lj-pair-layer');
-    const find=s=>overlay.querySelector(s), query=find('input'), summary=find('.lj-pair-summary');
+    const find=s=>overlay.querySelector(s), presetQuery=find('#lj-pair-preset-search'), modelQuery=find('#lj-pair-model-search'), summary=find('.lj-pair-summary');
     const ok=find('[data-pair="confirm"]'), presets=find('[data-list="presets"]'), models=find('[data-list="models"]');
     let data, presetKey='', connectionRef='', family='全部', busy=false, countObserver;
     function close(force=false) {
@@ -2838,8 +2873,19 @@ export function releaseThemeSettings() {
       summary.title=summary.textContent;
       ok.disabled=busy || !p || !r || Boolean(incompatible) || Boolean(r?.unavailable);
     }
+    function filterPresets(){
+      const text=presetQuery.value.trim().toLowerCase();
+      let matches=0;
+      for(const card of presets.children){
+        card.hidden=!card.dataset.search.includes(text);
+        if(!card.hidden)matches++;
+      }
+      const empty=find('[data-preset-empty]');
+      empty.hidden=matches>0;
+      empty.textContent=text?'没有找到匹配的预设。':'还没有可用的预设。';
+    }
     function modelList() {
-      const text=query.value.trim().toLowerCase();
+      const text=modelQuery.value.trim().toLowerCase();
       const visible=data.rows.filter(r=>(family==='全部'||pairFamily(r)===family)&&[r.label,r.model,r.api].join(' ').toLowerCase().includes(text));
       models.innerHTML=visible.map(r=>{
         const details=[r.model && r.model!==r.label?r.model:'',r.api==='custom'?'兼容 OpenAI':r.api,r.unavailable].filter(Boolean);
@@ -2847,7 +2893,11 @@ export function releaseThemeSettings() {
       }).join('') || '<p class="lj-pair-empty">没有找到匹配的连接。</p>';
       update();
     }
-    overlay.addEventListener('input',e=>{if(e.target===query && data) modelList();});
+    overlay.addEventListener('input',e=>{
+      if(!data)return;
+      if(e.target===presetQuery)filterPresets();
+      if(e.target===modelQuery)modelList();
+    });
     overlay.addEventListener('keydown',e=>{
       if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}
       if(e.key!=='Tab')return;
@@ -2861,7 +2911,14 @@ export function releaseThemeSettings() {
       const b=e.target.closest('button');
       if(e.target===overlay || b?.dataset.pair==='cancel' || b?.dataset.action==='close-modal'){close();return;}
       if (!b || busy || !data) return;
-      if(b.dataset.pair==='search'){const open=overlay.classList.toggle('lj-searching');if(open)query.focus();else{query.value='';modelList();}return;}
+      if(b.dataset.pair==='search'){
+        const input=D.getElementById(b.getAttribute('aria-controls'));
+        input.hidden=!input.hidden;
+        b.setAttribute('aria-expanded',String(!input.hidden));
+        if(input.hidden){input.value='';if(input===presetQuery)filterPresets();else modelList();}
+        else input.focus();
+        return;
+      }
       if(b.dataset.family){family=b.dataset.family;for(const t of find('.lj-pair-filters').children)t.setAttribute('aria-pressed',String(t===b));modelList();return;}
       if(b.dataset.choice){if(b.dataset.choice==='preset')presetKey=b.dataset.id;else connectionRef=b.dataset.id;update();return;}
       if(b===ok){
@@ -2881,7 +2938,7 @@ export function releaseThemeSettings() {
       if(choice){try{restored=pairTarget(choice);}catch{}}
       connectionRef=choice?(boundRow?.ref || restored?.ref || ''):(data.current || '');
       presetKey=JSON.stringify([choice?.engine || pairManager(data.active.api), choice?.preset || currentPreset()]);
-      presets.innerHTML=data.presets.map(p=>`<button type="button" class="lj-pair-card" data-choice="preset" data-id="${escapeHtml(p.key)}"><strong>${escapeHtml(p.title||p.name)}</strong><span class="lj-pair-tokens" hidden></span>${presetSummary(p)}</button>`).join('');
+      presets.innerHTML=data.presets.map(p=>`<button type="button" class="lj-pair-card" data-choice="preset" data-id="${escapeHtml(p.key)}" data-search="${escapeHtml([p.title,p.name].join(' ').toLowerCase())}"><strong>${escapeHtml(p.title||p.name)}</strong><span class="lj-pair-tokens" hidden></span>${presetSummary(p)}</button>`).join('');
       if(W.IntersectionObserver){
         let counts=Promise.resolve();
         countObserver=new W.IntersectionObserver(entries=>{
@@ -2901,6 +2958,7 @@ export function releaseThemeSettings() {
         },{root:presets});
         for(const card of presets.children)countObserver.observe(card);
       }
+      filterPresets();
       const families=['全部',...new Set(data.rows.map(pairFamily))];
       find('.lj-pair-filters').innerHTML=families.map(f=>`<button type="button" data-family="${f}" aria-pressed="${f===family}">${f}</button>`).join('');
       modelList();
@@ -3020,6 +3078,9 @@ export function releaseThemeSettings() {
     if(!Array.isArray(manager?.profiles))throw Error('请先启用酒馆的连接配置扩展。');
     return manager;
   }
+  function supportsKeySelection() {
+    return Boolean(ctx().SlashCommandParser?.commands?.['secret-id']);
+  }
   function apiKeyModule(){
     // Load the host's own module instance even when the theme runs inside a Tavern Helper frame.
     return frame===W?import('/scripts/secrets.js'):W.Function('return import("/scripts/secrets.js")')();
@@ -3042,11 +3103,14 @@ export function releaseThemeSettings() {
     if(values.url)row['api-url']=values.url;else delete row['api-url'];
     if(values.secret)row['secret-id']=values.secret;else delete row['secret-id'];
     row.exclude=(row.exclude||[]).filter(k=>!['api','model','api-url','secret-id'].includes(k));
-    const secrets=(await post('/api/secrets/read',{}))[key]||[];
+    const sharedKey = !supportsKeySelection();
+    if (sharedKey && values.secret) throw Error('此版本的酒馆按服务商共用密钥。请重新打开连接并选择当前密钥。');
+    const items=(await post('/api/secrets/read',{}))[key];
+    const secrets=Array.isArray(items) ? items : [];
     if(!values.password && values.secret && !secrets.some(s=>s.id===values.secret))throw Error('所选密钥已更改，请重新打开连接。');
     let fresh='',vault;
     try{
-      if(values.password){
+      if(values.password && !sharedKey){
         vault=await apiKeyModule();
         const previous=secrets.find(s=>s.active)?.id;
         fresh=await vault.writeSecret(key,values.password,values.name);
@@ -3057,6 +3121,14 @@ export function releaseThemeSettings() {
       prefs.pairAliases=aliases;
       manager.profiles=existing?profiles.map(p=>p===existing?row:p):[...profiles,row];
       await persist(true);
+      if(values.password && sharedKey){
+        // Older hosts keep one credential per provider. Persist the profile before replacing it.
+        vault=await apiKeyModule();
+        const response=await W.fetch('/api/secrets/write',{method:'POST',headers:ctx().getRequestHeaders(),
+          body:JSON.stringify({key,value:values.password})});
+        if(!response.ok)throw Error('服务商密钥保存失败，请重试。');
+        await vault.readSecretState();
+      }
     }catch(error){
       prefs.pairAliases=oldAliases;manager.profiles=profiles;ctx().saveSettingsDebounced();
       if(fresh)await vault.deleteSecret(key,fresh);
@@ -3103,8 +3175,8 @@ export function releaseThemeSettings() {
       <label>服务商或接口协议<select name="provider"></select></label>
       <label data-url>API 地址<input name="endpoint" type="url" placeholder="https://…/v1" autocomplete="off"></label>
       <label>模型名称<input name="model" required autocomplete="off"></label>
-      <label>已保存的密钥<select name="credential"></select></label>
-      <label>填写新密钥<input name="password" type="password" autocomplete="new-password" placeholder="留空使用上方选择"></label>
+      <label ${supportsKeySelection()?'':'hidden'}>已保存的密钥<select name="credential"></select></label>
+      <label>${supportsKeySelection()?'填写新密钥':'服务商共用密钥'}<input name="password" type="password" autocomplete="new-password" placeholder="留空使用上方选择"></label>
       <div class="lj-connection-test"><button type="button" class="lj-soft" data-test>发送测试消息</button>
       <button type="button" class="lj-soft" data-stop hidden>停止测试</button><p class="lj-muted lj-small" data-test-hint></p></div>
       <p role="status" aria-live="polite" data-status></p>
@@ -3122,7 +3194,12 @@ export function releaseThemeSettings() {
       fields.endpoint.value=p===row?.api?row.url:'';
       fields.password.value='';
       fields.credential.replaceChildren(new W.Option('使用服务商当前密钥（如有）',''));
-      const creds=state[pairSecretKey(p)]||[];
+      const items=state[pairSecretKey(p)];
+      const creds=Array.isArray(items) ? items : [];
+      if (!supportsKeySelection()) {
+        fields.password.placeholder=items?'已保存。留空沿用，填写将替换该服务商的共用密钥':'填写后，该服务商的所有连接共用此密钥';
+        return;
+      }
       creds.forEach((item,i)=>fields.credential.add(new W.Option(pairSecretLabel(item.label)||('已保存密钥 '+(i+1)),item.id)));
       fields.credential.value=p===row?.api?row.secret:'';
       if(row?.secret && p===row.api && !creds.some(item=>item.id===row.secret)){
@@ -3168,8 +3245,14 @@ export function releaseThemeSettings() {
           row=pairProfileRows().find(r=>r.ref==='profile:'+saved.id);
           if(draft.password){
             const key=pairSecretKey(draft.api),id=saved['secret-id'];
-            (state[key]||=[]).push({id,label:saved.name});
-            fields.credential.add(new W.Option(saved.name,id));fields.credential.value=id;fields.password.value='';
+            if(id){
+              (state[key]||=[]).push({id,label:saved.name});
+              fields.credential.add(new W.Option(saved.name,id));fields.credential.value=id;
+            }else{
+              state[key]=true;
+              fields.password.placeholder='已保存。留空沿用，填写将替换该服务商的共用密钥';
+            }
+            fields.password.value='';
           }
           // The lock temporarily disables the endpoint; use its actual draft value for the new baseline.
           baseline=JSON.stringify({...draft,secret:saved['secret-id']||'',password:''});
@@ -3700,7 +3783,7 @@ export function releaseThemeSettings() {
       editId=id;mode=id?'edit':'new';formContext={chatId:c.chatId,conn:personaConnection(c),locks};header(id?'编辑面具':'创建新面具');
       const fields=[['称呼','name',p.personas[id]||''],['备注','note',d.title||'']];
       const namedFields=fields.map(([label,key,value])=>`<label>${label}<input name="${key}" value="${escapeHtml(value)}" ${key==='name'?'required':''}></label>`).join('');
-      const lore=Array.from(new Set(['',...(c.getWorldInfoNames?.()||[]),...(d.lorebook?[d.lorebook]:[])]));
+      const lore=Array.from(new Set(['',...worldBookNames(),...(d.lorebook?[d.lorebook]:[])]));
       body.innerHTML=`<form class="lj-mask-form"><h3>面具设置</h3><label class="lj-mask-avatar">${id?`<img src="/User%20Avatars/${encodeURIComponent(id)}" alt="面具头像">`:''}更改人设图<input type="file" name="avatar" accept="image/*"></label>${namedFields}
       <label>性别<select name="gender">${options([['','未填写'],['女','女'],['男','男'],['其他','其他']],d[KEY]?.gender||'')}</select></label>
       <label>面具设定<textarea name="description" rows="7">${escapeHtml(d.description||'')}</textarea></label>
@@ -4022,7 +4105,7 @@ export function releaseThemeSettings() {
   const navItems = [['home','home','首页'],['recent','chat','对话'],['creator','user','我的角色'],['worlds','book','世界书'],['presets','preset','预设库'],['usage','chart','使用统计'],['settings','settings','设置']];
   function sideBar() {
     const entries = characterEntries().slice().sort((a,b)=>Number(b.c.date_last_chat||0)-Number(a.c.date_last_chat||0));
-    return `<aside class="lj-sidebar"><div class="lj-brand"><div class="lj-brand-mark">${icon('leaf')}</div><div><strong>建设主题</strong><small>演绎你的专属故事</small></div></div><nav class="lj-navigation" aria-label="主导航">${navItems.map(([page,i,label])=>`<button data-action="primary-route" data-page="${page}" class="${route===page?'active':''}" title="${label}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="lj-side-title">最近对话</div>${entries.slice(0,4).map(({c,id})=>`<button class="lj-side-character" data-action="open-char" data-id="${id}" title="${escapeHtml(c.name)}"><img src="${escapeHtml(thumb(c))}" alt=""><strong>${escapeHtml(c.name)}</strong></button>`).join('')}</aside>`;
+    return `<aside class="lj-sidebar"><div class="lj-brand"><div class="lj-brand-mark">${icon('leaf')}</div></div><nav class="lj-navigation" aria-label="主导航">${navItems.map(([page,i,label])=>`<button data-action="primary-route" data-page="${page}" class="${route===page?'active':''}" title="${label}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="lj-side-title">最近对话</div>${entries.slice(0,4).map(({c,id})=>`<button class="lj-side-character" data-action="open-char" data-id="${id}" title="${escapeHtml(c.name)}"><img src="${escapeHtml(thumb(c))}" alt=""><strong>${escapeHtml(c.name)}</strong></button>`).join('')}</aside>`;
   }
   function bottomNav() { return `<nav class="lj-bottom-nav" aria-label="手机导航">${[['home','home','首页'],['recent','chat','对话'],['presets','preset','预设'],['settings','user','我的']].map(([p,i,n])=>`<button data-action="primary-route" data-page="${p}" class="${route===p?'active':''}">${icon(i)}<span>${n}</span></button>`).join('')}</nav>`; }
   function title(name,buttons='') { return `<header class="lj-page-header"><h1>${name}</h1><div class="lj-row lj-wrap">${pageBackButton()}${buttons}</div></header>`; }
@@ -4052,13 +4135,13 @@ export function releaseThemeSettings() {
     return title('最近对话',searchBox('搜索角色或故事'))+`<div class="lj-list">${sortedCharacters(true).map(({c,id})=>`<article class="lj-session-card"><div class="lj-session-head" data-action="toggle-sessions" data-id="${id}" role="button" tabindex="0"><img src="${escapeHtml(thumb(c))}" alt=""><div class="lj-session-info"><h3>${escapeHtml(c.name)}</h3><div class="lj-muted lj-small"><span data-round-avatar="${escapeHtml(c.avatar)}">${roundLabel(c)}</span> · ${preferences().stats[c.avatar]?.chats ?? '—'} 个存档</div></div><button class="lj-iconbutton ${preferences().pinned.includes(c.avatar)?'lj-badge':''}" data-action="pin" data-id="${id}" aria-pressed="${preferences().pinned.includes(c.avatar)}" aria-label="${preferences().pinned.includes(c.avatar)?'取消置顶':'置顶'} ${escapeHtml(c.name)}">${icon('pin')}</button><span>⌄</span></div><div class="lj-session-content" data-sessions="${id}" hidden></div></article>`).join('') || '<div class="lj-empty">暂无对话</div>'}</div>`;
   }
   function worldsPage() {
-    const names=ctx().getWorldInfoNames?.() || [];
+    const names=worldBookNames();
     const bound=selected()?.data?.extensions?.world;
     return title('世界书','<button class="lj-primary" data-action="world-new">创建与导入</button>') + `<div class="lj-row lj-wrap" style="margin-bottom:20px">${searchBox('搜索世界书名称')}<button class="lj-soft" data-action="native" data-panel="worlds">全局世界书设置</button></div><div class="lj-resource-grid">${names.filter(n=>n.toLowerCase().includes(search.toLowerCase())).map((name,i)=>`<article class="lj-resource"><div class="lj-resource-cover" style="filter:hue-rotate(${(i%4)*12}deg)">${icon('book')}<span>${escapeHtml(name)}</span></div><div class="lj-resource-body"><div class="lj-row lj-space"><h3>${escapeHtml(name)}</h3>${bound===name?'<span class="lj-badge">角色已绑定</span>':''}</div><p>独立世界书资源，按角色、聊天或全局范围管理。</p><div class="lj-row lj-space"><button class="lj-primary" data-action="edit-world" data-name="${escapeHtml(name)}">编辑条目</button></div></div></article>`).join('') || '<div class="lj-empty">暂无世界书，可以创建或导入自己的世界。</div>'}</div>`;
   }
   function settingsPage() {
     const panels=[['api','link','模型连接','连接配置、模型和服务商'],['personas','user','人设面具','头像、人设和绑定'],['users','sun','界面与阅读','字号、字体、阅读与聊天偏好'],['backgrounds','image','背景库','全局背景与聊天背景'],['extensions','preset','扩展管理','正则、摘要、快捷回复和已安装扩展'],['format','edit','发给模型的消息格式','设置聊天记录和指令的排列方式']];
-    return title('个人设置')+`<div class="lj-personal-hero"><div class="lj-brand-mark">${icon('user')}</div><div><h2>我的故事空间</h2><p>角色、世界与每一次相遇</p></div></div><div class="lj-settings-grid lj-personal-resources">${[['creator','user','我的角色','创建和管理你的全部角色'],['worlds','book','世界书库','按角色绑定的世界设定'],['presets','preset','预设库','编辑提示词、开关和生成参数']].map(([p,i,t,d])=>`<button class="lj-setting-card" data-action="route" data-page="${p}">${icon(i)}<span><strong>${t}</strong><small>${d}</small></span></button>`).join('')}</div><h2 style="margin-top:28px">偏好与工具</h2><div class="lj-settings-grid">${panels.map(([p,i,t,d])=>`<button class="lj-setting-card" data-action="native" data-panel="${p}">${icon(i)}<span><strong>${t}</strong><small>${d}</small></span></button>`).join('')}</div><h2 style="margin-top:32px">数据与主题</h2><div class="lj-settings-grid"><button class="lj-setting-card" data-action="backup">${icon('download')}<span><strong>下载备份</strong><small>下载用户数据或主题源文件</small></span></button><button class="lj-setting-card" data-action="restore-theme">${icon('leaf')}<span><strong>切回原主题</strong><small>恢复改造前主题的启用状态</small></span></button></div><p class="lj-muted lj-small" style="margin-top:24px">建设主题 ${VERSION}。你的私人故事空间。</p>`;
+    return title('个人设置')+`<div class="lj-settings-grid lj-personal-resources">${[['creator','user','我的角色','创建和管理你的全部角色'],['worlds','book','世界书库','按角色绑定的世界设定'],['presets','preset','预设库','编辑提示词、开关和生成参数']].map(([p,i,t,d])=>`<button class="lj-setting-card" data-action="route" data-page="${p}">${icon(i)}<span><strong>${t}</strong><small>${d}</small></span></button>`).join('')}</div><h2 style="margin-top:28px">偏好与工具</h2><div class="lj-settings-grid">${panels.map(([p,i,t,d])=>`<button class="lj-setting-card" data-action="native" data-panel="${p}">${icon(i)}<span><strong>${t}</strong><small>${d}</small></span></button>`).join('')}</div><h2 style="margin-top:32px">数据与主题</h2><div class="lj-settings-grid"><button class="lj-setting-card" data-action="backup">${icon('download')}<span><strong>下载备份</strong><small>下载用户数据或主题源文件</small></span></button><button class="lj-setting-card" data-action="restore-theme">${icon('leaf')}<span><strong>切回原主题</strong><small>恢复改造前主题的启用状态</small></span></button></div><p class="lj-muted lj-small" style="margin-top:24px">建设主题 ${VERSION}。你的私人故事空间。</p>`;
   }
   function usagePage() {
     const stats=Object.values(preferences().stats);
@@ -4161,7 +4244,7 @@ export function releaseThemeSettings() {
   function applyBackground(){const b=bgSettings(),el=root.querySelector('.lj-chat-background');if(el){el.style.setProperty('--lj-dim',String(b.dim));el.style.setProperty('--lj-blur',`${b.blur}px`);const img=el.querySelector('img');if(img)img.src=b.url||avatar(selected());}}
   async function uploadBackground() {
     const input=D.createElement('input');input.type='file';input.accept='image/*';
-    input.addEventListener('change',async()=>{const file=input.files?.[0];if(!file)return;try{const form=new W.FormData();form.append('avatar',file,`lanjiu-${Date.now()}-${file.name}`);const headers={...ctx().getRequestHeaders()};delete headers['Content-Type'];delete headers['content-type'];const res=await W.fetch('/api/backgrounds/upload',{method:'POST',headers,body:form});if(!res.ok)throw Error(res.status);const name=await res.text();setBackground({url:'/backgrounds/'+encodeURIComponent(name.trim()),mode:'custom'});backgroundModal();toast('背景已保存到当前角色');}catch(e){toast('背景上传失败，请在背景图库重试。');}});input.click();
+    input.addEventListener('change',async()=>{const file=input.files?.[0];if(!file)return;try{const form=new W.FormData();form.append('avatar',file,`background-${Date.now()}-${file.name}`);const headers={...ctx().getRequestHeaders()};delete headers['Content-Type'];delete headers['content-type'];const res=await W.fetch('/api/backgrounds/upload',{method:'POST',headers,body:form});if(!res.ok)throw Error(res.status);const name=await res.text();setBackground({url:'/backgrounds/'+encodeURIComponent(name.trim()),mode:'custom'});backgroundModal();toast('背景已保存到当前角色');}catch(e){toast('背景上传失败，请在背景图库重试。');}});input.click();
   }
   function toolbox() { beginChatTools();modal('聊天工具箱',`<div class="lj-settings-grid">${[['memory','book','故事记忆','短期、长期与永久记忆'],['tree','chat','消息树','预览不同说法，跳转到想继续的剧情'],['quickreply','edit','角色指令','快捷回复与角色专属指令'],['world-library','book','世界书','角色绑定与条目管理'],['regex','preset','文字替换规则（正则）','编辑角色的文字替换和显示规则']].map(([a,i,n,t])=>`<button class="lj-setting-card" data-action="tool" data-tool="${a}">${icon(i)}<span><strong>${n}</strong><small>${t}</small></span></button>`).join('')}</div>`); }
   function memoryData() { ctx().chatMetadata[KEY] ||= {};ctx().chatMetadata[KEY].memory ||= {short:'',long:'',permanent:'',enabled:false};return ctx().chatMetadata[KEY]; }
@@ -4377,7 +4460,7 @@ export function releaseThemeSettings() {
   }
   function notesModal() {const c=selected();if(!c)return;modal('角色私有备注',`<textarea id="lj-notes-content" aria-label="角色备注">${escapeHtml(preferences().notes[c.avatar] || '')}</textarea><p class="lj-muted lj-small">备注只用于你自己查看，不发送给模型。</p><button class="lj-primary" data-action="save-notes">保存备注</button>`);}
   async function applyPreset(name,openSettings=false) {const manager=ctx().getPresetManager?.();const value=manager?.findPreset(name);if(value===undefined||value===null){toast('没有找到此预设');return;}if(manager.getSelectedPresetName()!==name)await manager.selectPreset(value);if(openSettings)openNative('generation');else{render();toast('已应用 '+name);}}
-  function installedThemeIds(){return THEME_IDS.filter(id=>ctx().getExtensionManifest?.(id));}
+  function installedThemeIds(){return THEME_IDS.filter(id=>extensionNames.includes(id));}
   async function activate() {
     const p=preferences(),disabled=ctx().extensionSettings.disabledExtensions || [];
     const installed=installedThemeIds();
@@ -4510,7 +4593,7 @@ export function releaseThemeSettings() {
       else if(action==='world-remove-confirm'){delete worldDraft.entries[worldUid];worldUid=Object.keys(worldDraft.entries)[0]||'';worldDirty=true;portal.querySelector('.lj-modal-backdrop')?.remove();render();}
       else if(action==='world-bind-save')await saveWorldBinding();
       else if(action==='binding-character'){if(await selectForPage(el.dataset.id,false))worldBindingModal();}
-      else if(action==='world-create'){const name=$('#lj-world-new-name').value.trim();if(!name)throw Error('请填写世界书名称');if(ctx().getWorldInfoNames().includes(name))throw Error('已有同名世界书');await ctx().saveWorldInfo(name,{entries:{}},true);await ctx().updateWorldInfoList();portal.querySelector('.lj-modal-backdrop')?.remove();await openWorld(name);}
+      else if(action==='world-create'){const name=$('#lj-world-new-name').value.trim();if(!name)throw Error('请填写世界书名称');if(worldBookNames().includes(name))throw Error('已有同名世界书');await ctx().saveWorldInfo(name,{entries:{}},true);await ctx().updateWorldInfoList();portal.querySelector('.lj-modal-backdrop')?.remove();await openWorld(name);}
       else if(action==='world-import')importWorldFile(el.closest('.lj-modal-backdrop'));
       else if(action==='prompt-edit')editPrompt(el.dataset.id);
       else if(action==='prompt-move')await savePromptChanges(s=>{const order=activePromptOrder(s),i=order.findIndex(p=>p.identifier===el.dataset.id),j=i+Number(el.dataset.direction);if(i>=0&&j>=0&&j<order.length)[order[i],order[j]]=[order[j],order[i]];});
@@ -4591,7 +4674,7 @@ export function releaseThemeSettings() {
       else if(event.target.id==='lj-bg-blur'){setBackground({blur:Number(event.target.value),mode:'custom'});$('#lj-blur-value').textContent=event.target.value+'px';}
     };
     on(root,'input',handleInput);on(portal,'input',handleInput);
-    const handleChange=async event=>{try{if(event.target.id==='lj-background-scope'){backgroundScope=event.target.value;backgroundModal();}else if(event.target.dataset.source)changeSource(event.target,true);else if(event.target.dataset.promptToggle)await savePromptChanges(s=>{const p=activePromptOrder(s).find(p=>p.identifier===event.target.dataset.promptToggle);if(p)p.enabled=event.target.checked;});else if(event.target.dataset.extensionToggle){const id=event.target.dataset.extensionToggle;if(id===themeExtensionId && !event.target.checked)releaseThemeSettings();const disabled=new Set(ctx().extensionSettings.disabledExtensions||[]);if(event.target.checked)disabled.delete(id);else disabled.add(id);ctx().extensionSettings.disabledExtensions=[...disabled];await persist(true);toast('启用状态已保存，刷新页面后生效');}}catch(error){toast(error.message);}};
+    const handleChange=async event=>{try{if(event.target.hasAttribute('data-global-book'))toggleGlobalBook(event.target);else if(event.target.id==='lj-background-scope'){backgroundScope=event.target.value;backgroundModal();}else if(event.target.dataset.source)changeSource(event.target,true);else if(event.target.dataset.promptToggle)await savePromptChanges(s=>{const p=activePromptOrder(s).find(p=>p.identifier===event.target.dataset.promptToggle);if(p)p.enabled=event.target.checked;});else if(event.target.dataset.extensionToggle){const id=event.target.dataset.extensionToggle;if(id===themeExtensionId && !event.target.checked)releaseThemeSettings();const disabled=new Set(ctx().extensionSettings.disabledExtensions||[]);if(event.target.checked)disabled.delete(id);else disabled.add(id);ctx().extensionSettings.disabledExtensions=[...disabled];await persist(true);toast('启用状态已保存，刷新页面后生效');}}catch(error){toast(error.message);}};
     on(root,'change',handleChange);on(portal,'change',handleChange);
     on(root,'keydown',event=>{if(event.key==='Enter'&&event.target.matches('[role="button"][data-action]'))event.target.click();});
     on(D,'keydown',event=>{
@@ -4617,6 +4700,12 @@ export function releaseThemeSettings() {
       const type=context.eventTypes[name];if(type){context.eventSource.on(type,refresh);listeners.push(()=>context.eventSource.removeListener(type,refresh));}
     }
     for(const name of ['CHAT_CHANGED','MESSAGE_SWIPED','MESSAGE_DELETED']){const type=context.eventTypes[name];if(type){context.eventSource.on(type,restoreMemorySnapshot);listeners.push(()=>context.eventSource.removeListener(type,restoreMemorySnapshot));}}
+    const worldSettingsEvent=context.eventTypes.WORLDINFO_SETTINGS_UPDATED;
+    if(worldSettingsEvent){
+      const syncBooks=()=>{if(route==='workspace' && workspaceKey==='worlds' && workspaceTab==='所有角色共用的书')refreshWorkspaceFields();};
+      context.eventSource.on(worldSettingsEvent,syncBooks);
+      listeners.push(()=>context.eventSource.removeListener(worldSettingsEvent,syncBooks));
+    }
     mountChatReading(context);mountPairing(context);mountCardWidgets();mountStoryMemory(context);mountBooks();mountBanner();
     render();scheduleCounts();syncMemoryPrompt();
     observeDialogs();observeMessages();loadControlLabels();loadRoleWorlds();

@@ -42,8 +42,6 @@ body.lj-active .lj-native-tools button{flex-shrink:0;border:1px solid #ffffff32;
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-sidebar{position:absolute;left:0;top:0;bottom:0;width:var(--lj-side);border-right:1px solid var(--lj-line);padding:16px;overflow:auto;background:#18181b;z-index:30}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand{display:flex;align-items:center;gap:10px;padding:0 6px 24px;color:#aa89ff}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand-mark{height:40px;width:40px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#b494ff,#6d48e5);color:#fff}
-:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand strong{font-size:23px;line-height:1.2}
-:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand small{display:block;font-size:11px;color:#a1a1aa}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation{display:flex;flex-direction:column;gap:4px}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation button{display:flex;align-items:center;gap:13px;padding:10px 13px;text-align:left;border-radius:10px;color:#aaaab3;position:relative}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation button:hover{background:#ffffff06;color:#fff}
@@ -141,7 +139,7 @@ body.lj-active .lj-native-tools button{flex-shrink:0;border:1px solid #ffffff32;
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:24px 0}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-stat{border:1px solid var(--lj-line);background:#ffffff04;border-radius:16px;padding:22px}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-stat strong{display:block;font-size:28px;font-weight:550;color:#c7b3ff}
-@media(max-width:1099px){:root{--lj-side:78px;--lj-right:0px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-sidebar{padding:16px 9px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand{padding:0 9px 24px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand>div:last-child,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation span,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-title,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character strong,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character small{display:none}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation button{justify-content:center;padding:13px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character{justify-content:center;padding:9px 0}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile{display:none}body.lj-details-open :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile{display:block;position:fixed;width:360px;box-shadow:-30px 0 100px #0008}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile-title .lj-mobile-back{display:inline-flex}}
+@media(max-width:1099px){:root{--lj-side:78px;--lj-right:0px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-sidebar{padding:16px 9px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-brand{padding:0 9px 24px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation span,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-title,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character strong,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character small{display:none}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-navigation button{justify-content:center;padding:13px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-side-character{justify-content:center;padding:9px 0}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile{display:none}body.lj-details-open :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile{display:block;position:fixed;width:360px;box-shadow:-30px 0 100px #0008}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile-title .lj-mobile-back{display:inline-flex}}
 @media(max-width:767px){:root{--lj-side:0px;--lj-right:0px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-sidebar{display:none}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-main{left:0;padding:18px 14px calc(84px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-page-header{gap:12px;margin-bottom:18px}:is(#lj-root,#lj-portal,.lj-adapted-popup) h1{font-size:22px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-search{width:100%}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-banner{height:170px;padding:24px 20px;margin-bottom:18px;border-radius:18px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-banner h2{font-size:24px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-banner p{font-size:12px;max-width:210px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-banner img{width:90px;height:124px;margin-left:12px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-character-card{border-radius:13px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-card-content{padding:11px 10px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-resource-grid{grid-template-columns:1fr}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-resource-cover{height:170px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-bottom-nav{display:flex;position:absolute;bottom:0;left:0;right:0;padding:8px 8px calc(8px + env(safe-area-inset-bottom));height:calc(60px + env(safe-area-inset-bottom));background:#202023f5;border-top:1px solid var(--lj-line);z-index:30;backdrop-filter:blur(16px)}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-bottom-nav button{display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;flex:1;color:#91919c;font-size:11px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-bottom-nav button.active{color:#ae8fff}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-bottom-nav svg{height:21px;width:21px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-chat-header{left:0;right:0;padding:10px 12px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-mobile-back{display:inline-flex}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-chat-background{inset:0}body.lj-active.lj-chat #sheld{left:0!important;right:0!important;width:100%!important}body.lj-active.lj-chat #chat{padding:12px 16px!important}body.lj-active.lj-chat #form_sheld{padding:8px 12px max(10px,env(safe-area-inset-bottom))!important}body.lj-active .lj-native-tools{padding:4px 12px 0}.lj-chat :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-bottom-nav{display:none}body.lj-details-open :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile{inset:0;width:100%;height:var(--lj-height);padding:14px 16px 30px;background:#171719;z-index:3000}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile-title{position:sticky;top:-14px;background:#171719;padding:10px 0;z-index:1}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-profile-cover{max-height:440px;aspect-ratio:1/1;object-position:center top}body.lj-active.lj-native-open #top-settings-holder .drawer-content.openDrawer{left:10px!important;right:10px!important;top:65px!important;bottom:calc(10px + env(safe-area-inset-bottom))!important;padding:12px!important}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-native-banner{left:0;height:56px;padding:0 12px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-modal-backdrop{padding:12px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-modal{max-height:86%;border-radius:17px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-modal-header{padding:14px 16px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-modal-content{padding:16px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-toast{bottom:88px}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-settings-grid{grid-template-columns:1fr}:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-stat-grid{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){:is(#lj-root,#lj-portal,.lj-adapted-popup) *,:is(#lj-root,#lj-portal,.lj-adapted-popup) *:before,:is(#lj-root,#lj-portal,.lj-adapted-popup) *:after{transition:none!important;animation:none!important}}
 :is(#lj-root,#lj-portal,.lj-adapted-popup)[hidden],.lj-native-tools[hidden]{display:none!important}
@@ -232,9 +230,6 @@ body.lj-active.lj-chat #send_but{display:grid;place-items:center;width:36px;heig
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-editor-fields>input,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-editor-fields>select,:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-editor-fields>textarea{width:100%}
 :is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-story-card p{height:64px;overflow:hidden;margin-bottom:16px;color:#a19aa9;font-size:12px}
 
-:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-personal-hero{display:flex;gap:16px;align-items:center;background:radial-gradient(ellipse at 90% 20%,#7657b547,transparent),#25202e;border:1px solid #ffffff0d;border-radius:18px;padding:26px;margin-bottom:22px}
-:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-personal-hero h2{margin:0 0 5px}
-:is(#lj-root,#lj-portal,.lj-adapted-popup) .lj-personal-hero p{color:#a59aaf;font-size:12px}
 body.lj-active.lj-chat #chat>.mes .mes_buttons{display:none!important}
 body.lj-active.lj-chat #chat>.mes .lj-message-actions{display:flex;justify-content:flex-end;gap:13px;width:100%;margin:10px 0 2px;align-items:center;padding:4px 0}
 body.lj-active.lj-chat .lj-message-actions button{border:0;background:none;color:#bbb3c3;padding:4px 1px;font:11px/1.4 Arial,"PingFang SC",sans-serif;display:flex;align-items:center;gap:5px;cursor:pointer}
@@ -301,11 +296,17 @@ body.lj-active:not(.lj-chat) .lj-chat-command-panel{visibility:hidden!important}
 body.lj-active :is(dialog,.TH-popup) [data-lj-translation]::after{content:attr(data-lj-translation);font:inherit}
 
 body.lj-original-view :is(#lj-root,#lj-portal,#sheld,.lj-native-tools,.lj-input-more){display:none!important}
-body.lj-active.lj-original-view #top-settings-holder{z-index:100!important}
+body.lj-active.lj-original-view {--lj-original-top:calc(52px + env(safe-area-inset-top))}
+body.lj-active.lj-original-view #top-settings-holder{
+  inset:0!important;width:100%!important;height:var(--lj-height)!important;max-height:none!important;
+  transform:none!important;overflow:visible!important;z-index:100!important;
+}
 body.lj-active.lj-original-view #top-settings-holder .drawer-content.lj-original-panel {
   display:block!important; visibility:visible!important;pointer-events:auto!important;
-  position:fixed!important;inset:calc(52px + env(safe-area-inset-top)) 0 0!important;
-  width:auto!important;max-width:none!important;height:auto!important;max-height:none!important;min-width:0!important;
+  position:fixed!important;inset:var(--lj-original-top) 0 auto!important;
+  width:100vw!important;max-width:100vw!important;min-width:0!important;
+  height:calc(var(--lj-height) - var(--lj-original-top))!important;max-height:none!important;
+  transition:none!important;touch-action:pan-y pinch-zoom;
   margin:0!important;padding:clamp(12px,3vw,36px) max(14px,calc((100vw - 1120px)/2)) max(24px,env(safe-area-inset-bottom))!important;
   box-sizing:border-box!important;overflow:auto!important;overscroll-behavior:contain;
   transform:none!important;animation:none!important;opacity:1!important;border:0!important;border-radius:0!important;background:#202024!important;
@@ -758,7 +759,7 @@ body:has(.lj-mask-layer) :is(#lj-root,#sheld) {filter:blur(4px);}
 #lj-portal .lj-pair-grid {display:grid;height:100%;grid-template-columns:minmax(0,32%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
 #lj-portal .lj-pair-left,#lj-portal .lj-pair-right {display:flex;flex-direction:column;min-height:0;min-width:0;padding:20px;gap:14px}
 #lj-portal .lj-pair-left {background:#212125;grid-row:1 / 3}
-#lj-portal .lj-pair-right header {display:flex;align-items:center;justify-content:space-between}
+#lj-portal .lj-pair-grid header {display:flex;align-items:center;justify-content:space-between}
 #lj-portal .lj-pair-grid h2 {margin:0;font-size:19px;font-weight:600}
 #lj-portal .lj-pair-list {display:flex;flex-direction:column;align-items:stretch;gap:11px;overflow-y:auto;overscroll-behavior:contain;min-height:0;scrollbar-width:thin}
 #lj-portal .lj-pair-card {position:relative;display:block;flex:none;text-align:start;min-height:68px;width:100%;padding:15px 33px 15px 14px;border:1px solid #404047;border-radius:15px;background:transparent;color:#f1eff5;cursor:pointer;overflow-wrap:anywhere}
@@ -770,11 +771,12 @@ body:has(.lj-mask-layer) :is(#lj-root,#sheld) {filter:blur(4px);}
 #lj-portal .lj-pair-card small {margin-top:6px;color:#b2aeba;font-size:12px;line-height:1.45;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #lj-portal .lj-pair-card:disabled {cursor:default;opacity:.62}
 #lj-portal .lj-pair-body {display:contents}
-#lj-portal .lj-phone-title,#lj-portal .lj-pair-right input[type=search] {display:none}
-#lj-portal .lj-searching .lj-pair-right input[type=search] {display:block}
+#lj-portal .lj-phone-title,#lj-portal .lj-pair-grid [hidden] {display:none}
+#lj-portal .lj-pair-grid input[type=search] {width:100%;min-width:0;margin:0;box-sizing:border-box}
+#lj-portal .lj-pair-grid header .lj-iconbutton {width:40px;height:40px;flex:none}
 #lj-portal .lj-pair-tokens:not([hidden]) {display:inline-block;padding:1px 6px;margin-left:5px;border-radius:10px;background:#6346ab;color:#f2edff;font-size:11px;line-height:17px}
 #lj-portal .lj-pair-left .lj-pair-card strong {display:inline}
-#lj-portal .lj-pair-right input,#lj-portal .lj-pair-right header,#lj-portal .lj-pair-filters {flex:none}
+#lj-portal .lj-pair-grid input,#lj-portal .lj-pair-grid header,#lj-portal .lj-pair-filters {flex:none}
 #lj-portal .lj-pair-filters {align-items:center;overflow-x:auto;overflow-y:hidden}
 #lj-portal .lj-pair-filters button {flex:none}
 #lj-portal .lj-pair-filters {display:flex;gap:6px;overflow:auto;padding-bottom:10px;border-bottom:1px solid #39383e}
@@ -800,9 +802,9 @@ body:has(.lj-mask-layer) :is(#lj-root,#sheld) {filter:blur(4px);}
   #lj-portal .lj-pair-right .lj-pair-list {overflow:visible;gap:9px}
   #lj-portal .lj-pair-card {padding:13px 33px 13px 14px;border-radius:12px}
   #lj-portal .lj-pair-card strong {font-size:14px}
-  #lj-portal .lj-phone-title,#lj-portal .lj-pair-right input[type=search] {display:block}
-  #lj-portal .lj-wide-title,#lj-portal .lj-pair-right [data-pair=search] {display:none}
-  #lj-portal .lj-pair-right input[type=search] {width:100%;height:38px;border-radius:10px}
+  #lj-portal .lj-phone-title {display:block}
+  #lj-portal .lj-wide-title {display:none}
+  #lj-portal .lj-pair-grid input[type=search] {height:38px;border-radius:10px}
   #lj-portal .lj-pair-grid footer {flex:none;padding:10px 16px max(10px,env(safe-area-inset-bottom));gap:8px}
   #lj-portal .lj-pair-summary {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #lj-portal .lj-pair-grid footer button {min-width:60px;min-height:36px}
@@ -932,3 +934,15 @@ body:has(.lj-mask-layer) :is(#lj-root,#sheld) {filter:blur(4px);}
  #lj-portal .lj-token-ring { grid-area:1/2/3/3;width:78px;margin:0; }
 }
 
+
+#lj-root .lj-global-book-search input {width:100%;max-width:32rem}
+#lj-root .lj-global-books > p {margin:0 0 12px;line-height:1.6}
+#lj-root .lj-global-book-count {font-size:13px;color:#b5b1c0;margin-bottom:8px}
+#lj-root .lj-global-book-list {border:1px solid var(--lj-line);border-radius:14px;overflow:hidden;background:#202024}
+#lj-root .lj-global-book-list > p {margin:16px}
+#lj-root .lj-global-book {display:flex;align-items:center;gap:12px;min-height:46px;margin:0;padding:10px 14px;box-sizing:border-box;cursor:pointer;line-height:1.5}
+#lj-root .lj-global-book + .lj-global-book {border-top:1px solid var(--lj-line)}
+#lj-root .lj-global-book:has(:checked) {background:#302a40;color:#e6dcff}
+#lj-root .lj-global-book:focus-within {outline:2px solid #aa90fa;outline-offset:-2px}
+#lj-root .lj-global-book input[type=checkbox] {appearance:auto;display:block;flex:0 0 18px;width:18px;height:18px;min-height:0;margin:0;padding:0;accent-color:#9976f6}
+#lj-root .lj-global-book span {min-width:0;overflow-wrap:anywhere}
