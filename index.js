@@ -27,7 +27,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.21';
+  const VERSION = '0.4.22';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -4657,7 +4657,7 @@ export function releaseThemeSettings() {
     removeThemeSwitch?.();
     removeThemeSwitch = undefined;
     if(root){root.hidden=false;D.body.classList.add('lj-active');render();return;}
-    style=D.createElement('link');style.id='lj-interface-style';style.rel='stylesheet';style.href=new URL('./theme.css',import.meta.url).href;D.head.append(style);
+    style=D.createElement('link');style.id='lj-interface-style';style.rel='stylesheet';style.href=new URL('./theme.css?v='+VERSION,import.meta.url).href;D.head.append(style);
     root=D.createElement('div');root.id='lj-root';D.body.append(root);D.body.classList.add('lj-active');
     portal=D.createElement('div');portal.id='lj-portal';D.body.append(portal);
     on(root,'click',handleClick);on(portal,'click',handleClick);
