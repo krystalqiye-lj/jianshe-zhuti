@@ -4,10 +4,10 @@
   "requires": [],
   "optional": [],
   "js": "index.js",
-  "author": "蓝酒",
-  "version": "0.4.19",
+  "author": "建设主题",
+  "version": "0.4.21",
   "homePage": "https://github.com/krystalqiye-lj/jianshe-zhuti",
-  "minimum_client_version": "1.19.0",
+  "minimum_client_version": "1.12.14",
   "hooks": {
     "disable": "releaseThemeSettings",
     "delete": "releaseThemeSettings"
