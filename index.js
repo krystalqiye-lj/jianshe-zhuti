@@ -1,3 +1,4 @@
+import { installPageSound } from './page-sound.js';
 import { eventSource, event_types, getOneCharacter } from '/script.js';
 import { extensionNames } from '/scripts/extensions.js';
 import { world_names } from '/scripts/world-info.js';
@@ -27,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.22';
+  const VERSION = '0.4.23';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -64,6 +65,8 @@ export function releaseThemeSettings() {
     back:'<path d="m14 5-7 7 7 7"/>',
     close:'<path d="m6 6 12 12M18 6 6 18"/>',
     sun:'<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
+    speaker:'<path d="m11 5-6 4H2v6h3l6 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+    silent:'<path d="m11 5-6 4H2v6h3l6 4V5Z"/><path d="m16 9 6 6m0-6-6 6"/>',
     panel:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>',
     edit:'<path d="m14 4 6 6-11 11H3v-6L14 4ZM12 6l6 6"/>',
     link:'<path d="m8 16 8-8M9 7l2-2a5 5 0 0 1 7 7l-2 2M15 17l-2 2a5 5 0 0 1-7-7l2-2"/>',
@@ -78,6 +81,13 @@ export function releaseThemeSettings() {
   const $ = selector => D.querySelector(selector);
   const all = selector => [...D.querySelectorAll(selector)];
   let root, portal, style, removeThemeSwitch, toolbar, toastTimer, refreshTimer, disposed = false;
+  let pageSound;
+  function updateSoundButton(button) {
+    const muted = pageSound.muted;
+    button.setAttribute('aria-pressed', String(muted));
+    button.title = muted ? '恢复页面声音' : '静音整个页面';
+    button.innerHTML = icon(muted ? 'silent' : 'speaker');
+  }
   let backgroundScope='character';
   let route = 'home', search = '', nativeTitle = '', nativePanel = '', activeMemoryPrompt = '';
   let sessionData = new Map(), countPromises = new Map(), countQueue = Promise.resolve();
@@ -4152,7 +4162,7 @@ export function releaseThemeSettings() {
   function chatPage() {
     const c=selected();if(!c)return '<div class="lj-main"><div class="lj-empty">请先选择一个角色。</div></div>';
     const bg=bgSettings();
-    return `<div class="lj-chat-background" style="--lj-dim:${Number(bg.dim)||0};--lj-blur:${Number(bg.blur)||0}px"><img src="${escapeHtml(bg.url || avatar(c))}" alt=""></div><header class="lj-chat-header"><button class="lj-iconbutton" data-action="page-back" aria-label="返回${escapeHtml(pageTrail.at(-1)?.label||'对话列表')}">${icon('back')}</button><img src="${escapeHtml(thumb(c))}" alt=""><strong>${escapeHtml(archiveTitle(ctx().chatId || c.name))}</strong><button class="lj-iconbutton" data-action="background" aria-label="聊天背景设置">${icon('sun')}</button><button class="lj-iconbutton" data-action="details" aria-label="角色资料">${icon('panel')}</button></header>${chatProfile(c)}`;
+    return `<div class="lj-chat-background" style="--lj-dim:${Number(bg.dim)||0};--lj-blur:${Number(bg.blur)||0}px"><img src="${escapeHtml(bg.url || avatar(c))}" alt=""></div><header class="lj-chat-header"><button class="lj-iconbutton" data-action="page-back" aria-label="返回${escapeHtml(pageTrail.at(-1)?.label||'对话列表')}">${icon('back')}</button><img src="${escapeHtml(thumb(c))}" alt=""><strong>${escapeHtml(archiveTitle(ctx().chatId || c.name))}</strong><button type="button" class="lj-iconbutton" data-action="page-sound" aria-label="页面静音"></button><button class="lj-iconbutton" data-action="background" aria-label="聊天背景设置">${icon('sun')}</button><button class="lj-iconbutton" data-action="details" aria-label="角色资料">${icon('panel')}</button></header>${chatProfile(c)}`;
   }
   function ensureToolbar() {
     if(!$('#form_sheld'))return;
@@ -4186,6 +4196,8 @@ export function releaseThemeSettings() {
     const pages={home:()=>homePage(),creator:()=>homePage(true),recent:recentPage,presets:presetsPage,'preset-editor':bookEditor,worlds:worldsPage,settings:settingsPage,usage:usagePage,workspace:settingsWorkspace,'world-editor':worldEditor};
     const content=route==='chat'?chatPage():`<main class="lj-main">${(pages[route] || pages.home)()}</main>`;
     root.innerHTML=sideBar()+content+bottomNav();
+    const soundButton = root.querySelector('[data-action="page-sound"]');
+    if (soundButton) updateSoundButton(soundButton);
     if(scroll)restoreScroll(scroll);
     syncCardWidgets();
     applyStoryStyle();
@@ -4519,6 +4531,11 @@ export function releaseThemeSettings() {
       else if(action==='preset-settings')await applyPreset(el.dataset.name,true);
       else if(action==='details')D.body.classList.toggle(W.matchMedia('(min-width:1100px)').matches?'lj-profile-collapsed':'lj-details-open');
       else if(action==='close-details')D.body.classList.remove('lj-details-open');
+      else if(action==='page-sound'){
+        pageSound.setMuted(!pageSound.muted);
+        updateSoundButton(el);
+        try { W.sessionStorage.setItem('jianshe.pageMuted', String(pageSound.muted)); } catch {}
+      }
       else if(action==='background'){backgroundScope=ctx().chatMetadata?.[KEY]?.background?'chat':'character';backgroundModal();}
       else if(action==='close-modal'){if(visibleDialog()&&!dialogParents.get(visibleDialog())&&route==='chat'&&currentToolOrigin())await returnToToolChat();else closeDialog();}
       else if(action==='default-bg'){setBackground({url:null});backgroundModal();}
@@ -4657,6 +4674,10 @@ export function releaseThemeSettings() {
     removeThemeSwitch?.();
     removeThemeSwitch = undefined;
     if(root){root.hidden=false;D.body.classList.add('lj-active');render();return;}
+    let muted = false;
+    try { muted = W.sessionStorage.getItem('jianshe.pageMuted') === 'true'; } catch {}
+    pageSound = installPageSound(W, muted);
+    listeners.push(() => pageSound.dispose());
     style=D.createElement('link');style.id='lj-interface-style';style.rel='stylesheet';style.href=new URL('./theme.css?v='+VERSION,import.meta.url).href;D.head.append(style);
     root=D.createElement('div');root.id='lj-root';D.body.append(root);D.body.classList.add('lj-active');
     portal=D.createElement('div');portal.id='lj-portal';D.body.append(portal);
