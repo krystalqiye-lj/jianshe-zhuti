@@ -1,0 +1,15 @@
+{
+  "display_name": "建设主题",
+  "loading_order": 1000,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "author": "蓝酒",
+  "version": "0.4.19",
+  "homePage": "https://github.com/krystalqiye-lj/jianshe-zhuti",
+  "minimum_client_version": "1.19.0",
+  "hooks": {
+    "disable": "releaseThemeSettings",
+    "delete": "releaseThemeSettings"
+  }
+}
