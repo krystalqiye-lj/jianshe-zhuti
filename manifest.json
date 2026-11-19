@@ -5,7 +5,7 @@
   "optional": [],
   "js": "index.js",
   "author": "建设主题",
-  "version": "0.4.22",
+  "version": "0.4.23",
   "homePage": "https://github.com/krystalqiye-lj/jianshe-zhuti",
   "minimum_client_version": "1.12.14",
   "hooks": {
