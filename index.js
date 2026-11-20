@@ -2710,7 +2710,7 @@ export function releaseThemeSettings() {
           }
           await post('/api/chats/delete',{avatar_url:avatar,chatfile:item.file_name});
           if(chatFile(c.chat)===oldName){
-            c.chat=next?chatFile(next.file_name):'';
+            c.chat=next?chatFile(next.file_name):c.name+' - 新故事';
             const response=await W.fetch('/api/characters/merge-attributes',{method:'POST',headers:ctx().getRequestHeaders(),body:JSON.stringify({avatar,chat:c.chat})});
             if(!response.ok)console.warn('[建设主题] 最近存档指向未保存');
           }
