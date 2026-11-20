@@ -442,13 +442,14 @@ body.lj-active.lj-chat #chat .lj-editor-foot button[data-lj-msg="save-edit"],#lj
 body.lj-active.lj-chat #chat :is(.lj-inline-message-editor,.lj-message-actions) button:disabled { opacity:.55; }
 body.lj-active.lj-chat #chat > .mes.lj-pending-delete > .mes_block { outline:2px solid #dc262666; border-radius:10px; outline-offset:3px; }
 #lj-portal .lj-delete-message-bar {
-  position:fixed; bottom:0; left:var(--lj-side); right:var(--lj-right); margin:0 auto; max-width:800px;
-  display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 16px max(10px,env(safe-area-inset-bottom));
-  border-top:1px solid #b7b8bd1a; background:rgba(28,31,35,.94); backdrop-filter:blur(8px); color:#fff;
+  position:relative; inset:auto; transform:none; margin:0; width:100%; max-width:430px; max-height:100%; overflow:auto;
+  display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:10px; padding:20px;
+  border:1px solid #55505b; border-radius:16px; background:#222127; color:#fff; box-shadow:0 10px 48px #0008;
+  overscroll-behavior:contain; overflow-wrap:anywhere;
 }
-#lj-portal .lj-delete-message-bar div { flex:1; }
+#lj-portal .lj-delete-message-bar div { flex:0 0 100%; min-width:0; }
 #lj-portal .lj-delete-message-bar strong,#lj-portal .lj-delete-message-bar small { display:block; }
-#lj-portal .lj-delete-message-bar small { font-size:12px; line-height:16px; color:#ffffff91; }
+#lj-portal .lj-delete-message-bar small { font-size:12px; line-height:1.6; margin:8px 0; color:#c6c0ca; }
 #lj-portal .lj-delete-message-bar button { flex:none; padding:0 12px; }
 #lj-portal .lj-delete-message-bar button[data-lj-msg="confirm-delete"] { background:#e93544; }
 #lj-portal .lj-compact-confirm .lj-modal { padding:22px; background:#18181b; border-radius:24px; }
@@ -458,7 +459,7 @@ body.lj-active.lj-chat #chat > .mes.lj-pending-delete > .mes_block { outline:2px
 #lj-portal .lj-compact-confirm p { margin:16px 0; color:#ffffffb8; font-size:14px; }
 #lj-portal .lj-retry-option { margin:8px 0; display:inline-flex; align-items:center; gap:8px; color:#ffffffa8; }
 #lj-portal .lj-retry-option input { width:16px; height:16px; padding:0; margin:0; accent-color:#8c71f6; }
-#lj-portal .lj-confirm-buttons { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+#lj-portal .lj-confirm-buttons { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:20px; }
 #lj-portal .lj-msg-note label { display:block; margin:12px 0; }
 #lj-portal .lj-msg-note input,#lj-portal .lj-msg-note textarea { display:block; width:100%; margin-top:6px; }
 #lj-portal .lj-token-total { display:flex; flex-direction:column; gap:8px; }
@@ -482,10 +483,14 @@ body:not(.lj-active) #chat .lj-message-actions { display:none; }
 /* The empty marker used by native bulk deletion must not take a flex gap. */
 body.lj-active.lj-chat #chat > .mes > .for_checkbox:empty {position:absolute}
 
-#lj-portal .lj-delete-message-bar{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(430px,calc(100vw - 32px));max-width:none;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;padding:20px;border:1px solid #55505b;border-radius:16px;background:#222127;box-shadow:0 0 0 100vmax #0007,0 10px 48px #0008;z-index:10}
-#lj-portal .lj-delete-message-bar div{flex:0 0 100%}
-#lj-portal .lj-delete-message-bar small{margin:8px 0;color:#c6c0ca}
-#lj-portal .lj-toast{pointer-events:none}
+/* Keep transient hints inside the sized portal when a card transforms the body. */
+#lj-portal > :is(.lj-toast,.lj-mask-toast){position:absolute}
+#lj-portal .lj-toast{pointer-events:none;max-height:calc(100% - 24px);overflow:auto;overflow-wrap:anywhere}
+@media(max-width:767px){
+  #lj-portal > .lj-modal-backdrop{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+  #lj-portal .lj-modal-header{flex-wrap:wrap;gap:8px}
+  #lj-portal .lj-modal-header strong{min-width:0;overflow-wrap:anywhere}
+}
 
 #lj-portal .lj-message-tree {
   display: grid;
@@ -752,7 +757,7 @@ body.lj-active.lj-chat #chat > .mes > .for_checkbox:empty {position:absolute}
 #lj-portal .lj-mask-footer {display:flex;justify-content:flex-end;gap:8px;}
 #lj-portal .lj-mask-footer button {padding:8px 18px;border-radius:14px;background:#ffffff13;}
 #lj-portal .lj-mask-footer button:last-child {background:#8264da;color:white;}
-#lj-portal .lj-mask-toast {position:fixed;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:21000;width:max-content;max-width:calc(100vw - 24px);display:flex;align-items:center;gap:9px;padding:12px 15px;border:1px solid #ffffff22;border-radius:9px;color:#f6f2f3;background:#373236f5;box-shadow:0 5px 20px #0004;pointer-events:none;font:500 14px/1.5 ui-serif,"Songti SC",serif;}
+#lj-portal .lj-mask-toast {position:absolute;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:21000;width:max-content;max-width:calc(100vw - 24px);display:flex;align-items:center;gap:9px;padding:12px 15px;border:1px solid #ffffff22;border-radius:9px;color:#f6f2f3;background:#373236f5;box-shadow:0 5px 20px #0004;pointer-events:none;font:500 14px/1.5 ui-serif,"Songti SC",serif;}
 #lj-portal .lj-mask-toast svg {width:17px;height:17px;stroke:none;}
 @media(max-width:520px){#lj-portal .lj-mask-layer .lj-modal {width:100%;max-width:none!important;}}
 
