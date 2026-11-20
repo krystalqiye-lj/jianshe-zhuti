@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.25';
+  const VERSION = '0.4.26';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -92,6 +92,62 @@ export function releaseThemeSettings() {
   let backgroundScope='character';
   let route = 'home', search = '', nativeTitle = '', nativePanel = '', activeMemoryPrompt = '';
   let sessionData = new Map(), countPromises = new Map(), countQueue = Promise.resolve();
+  let chatLoadDepth=0, chatWriteDepth=0, chatHostPromise, chatSaveQueue=Promise.resolve();
+  const chatHost=()=>chatHostPromise ||= import('/script.js');
+  function chatTransitionBusy(){return chatLoadDepth>0 || openingCharacter || returningPage;}
+  function chatIdentity(context=ctx()){
+    return {scope:branchSession(context),metadata:context.chatMetadata};
+  }
+  function assertChatIdentity(identity){
+    if(chatTransitionBusy() || branchSession()!==identity.scope || ctx().chatMetadata!==identity.metadata)
+      throw Error('存档还在加载或已经切换，请等加载完成后再操作。');
+  }
+  async function loadChatFile(file){
+    if(openingStory || chatWriteDepth || branchBusy)throw Error('当前聊天正在保存，请稍后再切换存档。');
+    chatLoadDepth++;
+    try{return await ctx().openCharacterChat(chatFile(file));}
+    finally{chatLoadDepth--;}
+  }
+  function chatBodiesMatch(saved,live,context=ctx(),preview=false){
+    return saved.length===live.length && saved.every((message,index)=>{
+      const current=live[index];
+      if(!current || Boolean(message.is_user)!==Boolean(current.is_user) || Boolean(message.is_system)!==Boolean(current.is_system))return false;
+      if(preview && index===0 && saved.length===1 && !message.is_user)return true;
+      const opening=index===0 && !message.is_user && !message.is_system;
+      const expand=text=>opening && typeof text==='string'?text.replace(/\{\{\s*(user|char)\s*\}\}/gi,(match,name)=>
+        (name.toLowerCase()==='user'?context.name1:message.name||context.name2)??match):text;
+      const textMatches=(a,b)=>a===b || opening && expand(a)===b;
+      const stored=message.swipes?.length?message.swipes:[message.mes],shown=current.swipes?.length?current.swipes:[current.mes];
+      return textMatches(message.mes,current.mes) && message.name===current.name &&
+        (Number(message.swipe_id)||0)===(Number(current.swipe_id)||0) &&
+        stored.length===shown.length && stored.every((text,i)=>textMatches(text,shown[i]));
+    });
+  }
+  function saveChatSafely({bodyChanges=false,preview=false,metadata=false}={}){
+    const context=ctx(), identity=chatIdentity(context);
+    assertChatIdentity(identity);
+    if(!context.chatId || !context.chat.length)throw Error('聊天内容尚未加载完成，已停止保存以保留旧记录。');
+    chatWriteDepth++;
+    const run=async()=>{
+      const host=await chatHost();assertChatIdentity(identity);
+      for(let n=0;host.isChatSaving && n<80;n++){
+        await new Promise(resolve=>W.setTimeout(resolve,25));assertChatIdentity(identity);
+      }
+      if(host.isChatSaving)throw Error('酒馆正在保存，请稍后再试。');
+      const saved=await branchRemote(context);assertChatIdentity(identity);
+      const canPreview=preview && !hasArchiveConversation(saved.messages,saved.metadata) && !hasArchiveConversation(context.chat,context.chatMetadata);
+      if(!bodyChanges && (saved.revision!==context.chatMetadata?.[KEY]?.branches?.revision ||
+        saved.messages.length && !chatBodiesMatch(saved.messages,context.chat,context,canPreview)))
+        throw Error('服务器里的聊天与当前页面不同，已保留原档。请重新打开存档后再操作。');
+      if(metadata)await context.saveMetadata();else await context.saveChat();
+      assertChatIdentity(identity);
+      const stored=await branchRemote(context);assertChatIdentity(identity);
+      if(!chatBodiesMatch(stored.messages,context.chat,context))throw Error('未能确认存档保存，请重新打开后核对。');
+    };
+    const result=chatSaveQueue.then(run);
+    chatSaveQueue=result.catch(()=>{});
+    return result.finally(()=>{chatWriteDepth--;});
+  }
   const listeners = [], observers = [];
   const native = {
     generation:['ai-config-button','预设设置'], api:['sys-settings-button','模型连接'], format:['advanced-formatting-button','发给模型的消息格式'],
@@ -294,6 +350,7 @@ export function releaseThemeSettings() {
   async function backPage(){
     const prev=pageTrail.at(-1);
     if(!prev || returningPage)return;
+    if(openingStory || chatWriteDepth || branchBusy || archiveBusy){toast('当前聊天正在保存或处理，请稍后返回。');return;}
     if(route==='world-editor' && worldDirty){
       if(!W.confirm('放弃尚未保存的世界书修改并返回吗？'))return;
       worldDirty=false;
@@ -306,7 +363,7 @@ export function releaseThemeSettings() {
         if(id<0){toast('原角色已移除。');pageTrail.pop();return;}
         if(!await selectForPage(id,prev.route==='workspace'))return;
       }
-      if(prev.route==='chat' && prev.file && ctx().chatId!==prev.file)await ctx().openCharacterChat(chatFile(prev.file));
+      if(prev.route==='chat' && prev.file && ctx().chatId!==prev.file)await loadChatFile(prev.file);
       if(pageTrail.at(-1)!==prev)return;
       pageTrail.pop();navigationRevision++;closeNative();visibleDialog()?.remove();
       route=prev.route;search=prev.search;listOrder=prev.listOrder;profileAvatar=prev.profileAvatar;
@@ -324,8 +381,10 @@ export function releaseThemeSettings() {
     }finally{returningPage=false;}
   }
   async function selectForPage(id,edit){
-    if(ctx().streamingProcessor){toast('请先等待当前回复完成。');return false;}
-    await ctx().selectCharacterById(Number(id),{switchMenu:edit});
+    if(ctx().streamingProcessor || openingStory || chatWriteDepth || branchBusy){toast('请先等待当前聊天操作完成。');return false;}
+    chatLoadDepth++;
+    try{await ctx().selectCharacterById(Number(id),{switchMenu:edit});}
+    finally{chatLoadDepth--;}
     if(String(ctx().characterId)===String(id))return true;
     toast('角色正在保存，请稍后再试。');return false;
   }
@@ -1189,6 +1248,7 @@ export function releaseThemeSettings() {
     toast('已导入《'+name+'》并绑定到'+c.name);render();
   }
   async function worldBindingModal(){
+    if(chatTransitionBusy() || openingStory || chatWriteDepth){toast('请等存档加载或保存完成后再管理世界书。');return;}
     const c=selected();if(!c){toast('请从角色聊天右侧的设置中管理此角色的世界书。');return;}
     const key=pairScope(),host=await loadRoleWorlds();if(selected()?.avatar!==c.avatar||pairScope()!==key)return;
     const primary=c.data?.extensions?.world||'',chat=ctx().chatMetadata.world_info||'',extra=extraBooks(c);
@@ -1207,7 +1267,7 @@ export function releaseThemeSettings() {
     if(primary!==(c.data?.extensions?.world||''))await context.writeExtensionField(Number(id),'world',primary);
     if(scope!==pairScope()||selected()?.avatar!==c.avatar)throw Error('聊天已切换，请回到原存档核对绑定。');
     if(form.querySelector('[data-extra-book]'))worldHost?.charSetAuxWorlds(worldFile(c),extras);
-    if(chat!==(meta.world_info||'')){meta.world_info=chat;await context.saveChat();}
+    if(chat!==(meta.world_info||'')){meta.world_info=chat;await saveChatSafely();}
     closeDialog(form);toast('已保存角色和此存档的世界书');render();
   }
   function newWorldModal(){modal('创建或导入世界书',`<label>世界书名称</label><input id="lj-world-new-name" placeholder="为这个世界起个名字"><div class="lj-form-actions"><button class="lj-primary" data-action="world-create">创建世界书</button><button class="lj-soft" data-action="world-import">导入世界书文件</button></div><p class="lj-muted">支持 JSON、.lorebook 和内含世界书的 PNG 图片。</p>`,'520px');}
@@ -1237,12 +1297,19 @@ export function releaseThemeSettings() {
     const greetings=storyResources();
     return `<div class="lj-story-grid">${greetings.map((g,i)=>{const meta=storyMeta(i);return `<article class="lj-story-card"><div class="lj-story-cover"><img src="${escapeHtml(meta.background||avatar(selected()))}" alt="故事封面"><span>${escapeHtml(openingLabel(i,greetings.length,meta.name))}</span></div><div class="lj-resource-body"><p>${escapeHtml(plain(g).slice(0,220))}</p><div class="lj-row lj-space"><button class="lj-soft" data-action="story-edit" data-index="${i}">编辑</button><button class="lj-primary" data-action="story-start" data-index="${i}">开始聊天</button></div></div></article>`;}).join('')}</div><div class="lj-form-actions"><button class="lj-soft" data-action="story-add">添加开场故事</button></div>`;
   }
-  async function showStories(){if(!selected())return;await ctx().unshallowCharacter(ctx().characterId);modal('开场故事',storyCards(),'900px');}
+  async function showStories(){
+    if(chatTransitionBusy() || chatWriteDepth || openingStory || branchBusy){toast('存档还在加载或保存，请稍后再选择开场白。');return;}
+    if(!selected())return;
+    const identity=chatIdentity();
+    await ctx().unshallowCharacter(ctx().characterId);assertChatIdentity(identity);
+    modal('开场故事',storyCards(),'900px');
+  }
   function editStory(index){
     editingStoryIndex=index;const meta=storyMeta(index),text=storyResources()[index]||'',names=worldBookNames();
     modal('编辑开场故事',`<div class="lj-editor-fields"><label>故事名称</label><input id="lj-story-name" value="${escapeHtml(meta.name||openingLabel(index,storyResources().length))}"><label>开场白</label><textarea id="lj-story-text" rows="12">${escapeHtml(text)}</textarea><label>此故事的聊天世界书</label><select id="lj-story-world"><option value="">沿用角色绑定</option>${names.map(n=>`<option ${n===meta.world?'selected':''}>${escapeHtml(n)}</option>`).join('')}</select><label>故事背景图地址</label><input id="lj-story-background" value="${escapeHtml(meta.background||'')}" placeholder="留空使用角色图"><label>故事阅读样式 CSS</label><textarea id="lj-story-css" rows="4" placeholder="选填，留空沿用当前角色的美化">${escapeHtml(meta.css||'')}</textarea><div class="lj-form-actions"><button class="lj-primary" data-action="story-save">保存故事</button></div></div>`);
   }
   async function saveStory(){
+    if(chatTransitionBusy() || chatWriteDepth)throw Error('请等存档加载或保存完成后再保存开场白。');
     const c=selected(),index=editingStoryIndex,greetings=storyResources(),text=$('#lj-story-text').value;
     if(index===0)greetings[0]=text;else greetings[index]=text;
     const meta={...storyMeta(index),date:new Date().toISOString(),name:$('#lj-story-name').value,world:$('#lj-story-world').value,background:$('#lj-story-background').value,css:$('#lj-story-css').value};
@@ -1254,23 +1321,40 @@ export function releaseThemeSettings() {
   }
   async function startStory(index){
     if(openingStory)return;
+    if(chatTransitionBusy() || chatWriteDepth || branchBusy || archiveBusy){toast('存档还在加载或保存，请稍后再选择开场白。');return;}
     openingStory=true;
     try {
-    if(ctx().streamingProcessor){toast('请先等待当前回复完成');return;}
+    const host=await chatHost();
+    if(ctx().streamingProcessor || host.is_send_press || host.isGenerating?.()){toast('请先等待当前回复完成');return;}
+    const initial=ctx(), identity=chatIdentity(initial), avatar=selected()?.avatar;
+    assertChatIdentity(identity);
+    if(!initial.chat.length)throw Error('聊天内容还未加载完成，已保留旧存档。请稍后重试。');
     const greetings=storyResources(),meta=storyMeta(index);
     if(!greetings[index]){toast('这个开场故事还没有内容');return;}
+    const saved=await branchRemote(initial);assertChatIdentity(identity);
+    if(saved.messages.length && !chatBodiesMatch(saved.messages,initial.chat,initial))
+      throw Error('服务器里的聊天与当前页面不同，已保留原档。请重新打开存档后再选择开场白。');
+    const started=hasArchiveConversation(saved.messages,saved.metadata) || hasArchiveConversation(initial.chat,initial.chatMetadata);
     portal.querySelector('.lj-modal-backdrop')?.remove();
-    if(hasUserMessage(ctx().chat))await ctx().executeSlashCommandsWithOptions('/newchat');
+    if(started){
+      await saveChatSafely();
+      await initial.executeSlashCommandsWithOptions('/newchat');
+      if(selected()?.avatar!==avatar || branchSession()===identity.scope || !ctx().chat.length || hasArchiveConversation(ctx().chat,ctx().chatMetadata))
+        throw Error('酒馆未能建立新的预览，已停止切换开场白以保留旧存档。');
+    }else assertChatIdentity(identity);
+    const previewIdentity=chatIdentity();
     const actualIndex=greetings[0]?index:index-1;
     const message=ctx().chat[0];
     if(message?.swipes?.length&&actualIndex>=0&&actualIndex<message.swipes.length)await ctx().swipe.to(null,'right',{source:'slash_command',forceMesId:0,forceSwipeId:actualIndex,forceDuration:0});
+    assertChatIdentity(previewIdentity);
+    if(hasArchiveConversation(ctx().chat,ctx().chatMetadata))throw Error('这个存档已经开始聊天，已停止修改开场白。');
     ctx().chatMetadata[KEY]||={memory:{short:'',long:'',permanent:'',enabled:false}};
     ctx().chatMetadata[KEY].storyIndex=index;
     delete ctx().chatMetadata.world_info;
     delete ctx().chatMetadata[KEY].background;
     if(meta.world)ctx().chatMetadata.world_info=meta.world;
     if(meta.background)ctx().chatMetadata[KEY].background={...bgSettings(),url:meta.background};
-    await ctx().saveChat();navigate('chat');applyStoryStyle();toast('已选择 '+(meta.name||openingLabel(index,storyResources().length)));
+    await saveChatSafely({preview:true});navigate('chat');applyStoryStyle();toast('已选择 '+(meta.name||openingLabel(index,storyResources().length)));
     } finally {openingStory=false;}
   }
   function applyStoryStyle(){
@@ -1640,14 +1724,14 @@ export function releaseThemeSettings() {
       : await post('/api/chats/get', {avatar_url:context.characters[context.characterId].avatar, file_name:context.chatId});
     if (!Array.isArray(data)) throw new Error('未能读取这个聊天存档，请重新打开后再试。');
     const header = data[0]?.chat_metadata;
-    return {revision:header?.[KEY]?.branches?.revision, messages:!group || Object.hasOwn(data[0] || {}, 'chat_metadata') ? data.slice(1) : data};
+    return {revision:header?.[KEY]?.branches?.revision, metadata:header||{}, messages:!group || Object.hasOwn(data[0] || {}, 'chat_metadata') ? data.slice(1) : data};
   }
 
   async function branchSave(session) {
     branchAssertSession(session);
     const context = ctx(), revision = branchIdentity();
     branchStore(context).revision = revision;
-    await context.saveChat();
+    await saveChatSafely({bodyChanges:true});
     if ((await branchRemote(context)).revision !== revision) throw new Error('分支保存未确认，请重新打开这个存档后再试。');
     branchAssertSession(session);
   }
@@ -1656,7 +1740,7 @@ export function releaseThemeSettings() {
     const draft = $('#send_textarea')?.value;
     const context = ctx();
     if (context.clearChat && context.printMessages && context.eventSource?.emit) {
-      await context.clearChat();
+      await context.clearChat({clearData:false});
       branchAssertSession(session);
       await context.printMessages();
       await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, context.chatId);
@@ -1676,7 +1760,7 @@ export function releaseThemeSettings() {
   function branchRun(operation) {
     const context = ctx();
     const stop = $('#mes_stop');
-    if (branchBusy || context?.streamingProcessor || (stop && stop.getClientRects().length)) {
+    if (branchBusy || chatTransitionBusy() || chatWriteDepth || openingStory || archiveBusy || context?.streamingProcessor || (stop && stop.getClientRects().length)) {
       throw new Error('请等当前回复或分支操作完成。');
     }
     if (!context?.chatId) throw new Error('请先进入一个聊天存档。');
@@ -2473,7 +2557,7 @@ export function releaseThemeSettings() {
           extra.permanentEntry={title,text,block};
           saveMemorySnapshot(); syncMemoryPrompt();
         } else extra.issue=text;
-        await ctx().saveChat(); overlay.remove(); decorateMessages();
+        await saveChatSafely(); overlay.remove(); decorateMessages();
         toast(remember?'已保存到永久记忆':'问题已记录');
       } catch(error) {toast(error.message);} finally {button.disabled=false;}
     });
@@ -2635,6 +2719,7 @@ export function releaseThemeSettings() {
     const c=ctx().characters[id];if(!c)return;
     const dialog=modal('存档管理',
       '<div class="lj-list" data-archives>正在读取存档…</div>'+
+      '<div class="lj-form-actions"><button type="button" class="lj-soft" data-action="archive-native" data-id="'+id+'">酒馆备份与导入</button></div>'+
       (selected()?.avatar===c.avatar?'<details class="lj-archive-advanced"><summary>更多存档操作</summary><div class="lj-archive-tools">'+archiveKeys.filter(k=>k!=='mes_bookmark'||ctx().chat.some(m=>m.extra?.bookmark_link)).map(k=>'<button class="lj-soft" data-action="archive-pick" data-key="'+k+'">'+nativeMessageLabels[k]+'</button>').join('')+'</div></details>':''), '460px');
     dialog.classList.add('lj-archives-sheet');
     const header=dialog.querySelector('.lj-modal-header');
@@ -2650,6 +2735,21 @@ export function releaseThemeSettings() {
     if(previews.length)area.insertAdjacentHTML('beforeend',
       '<details class="lj-preview-archives"><summary>未开始的预览（'+previews.length+'）</summary>'+sessionItems(previews,id)+'</details>');
     await labelArchiveOpenings(area,list,id);
+  }
+  async function openArchiveBackups(id){
+    if(chatTransitionBusy() || openingStory || branchBusy || archiveBusy || chatWriteDepth)
+      throw Error('请等当前存档加载或保存完成后再查看备份。');
+    await openCharacter(id);
+    if(String(ctx().characterId)!==String(id) || route!=='chat')return;
+    const manager=$('#option_select_chat');
+    if(!manager)throw Error('这个酒馆版本暂时无法打开原有聊天管理。');
+    manager.click();
+    for(let i=0;i<40;i++){
+      const popup=$('#select_chat_popup'),toggle=popup?.querySelector('button .fa-box-open')?.closest('button');
+      if(toggle){if(!popup.querySelector('.chatBackupsList.open'))toggle.click();return;}
+      await new Promise(resolve=>W.setTimeout(resolve,25));
+    }
+    toast('已打开酒馆的聊天管理。这个版本若没有备份浏览器，可用“导入聊天”载入备份文件。');
   }
   function archiveMenu(id,file,anchor){
     if(archivePopup?.anchor===anchor){dismissArchiveMenu();return;}
@@ -2678,6 +2778,7 @@ export function releaseThemeSettings() {
     if(field){field.focus();field.select();field.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click();}});}
     save.onclick=async()=>{
       if(archiveBusy)return;
+      if(chatTransitionBusy() || openingStory || branchBusy || chatWriteDepth){error.textContent='存档还在加载或保存，请稍后再操作。';return;}
       archiveBusy=true;const controls=[...layer.querySelectorAll('button,input')];controls.forEach(el=>el.disabled=true);
       try {
         const context=ctx(),id=context.characters.findIndex(c=>c?.avatar===avatar),c=context.characters[id];
@@ -2688,13 +2789,13 @@ export function releaseThemeSettings() {
         const oldName=chatFile(item.file_name),current=selected()?.avatar===avatar && chatFile(ctx().chatId)===oldName;
         const host=await import('/script.js');
         if(host.is_send_press || host.isGenerating?.())throw Error('请先等待当前回复完成。');
-        if(current)await ctx().saveChat();
+        if(current)await saveChatSafely();
         host.cancelDebouncedChatSave?.();
         if(remove){
           // Switch first so delayed native saves cannot recreate the deleted file.
           const next=list.find(f=>f.started && f.file_name!==item.file_name)||list.find(f=>f.file_name!==item.file_name);
           if(current){
-            if(next)await ctx().openCharacterChat(chatFile(next.file_name));
+            if(next)await loadChatFile(next.file_name);
             else if(host.closeCurrentChat){if(!await host.closeCurrentChat())throw Error('请先停止当前回复。');}
             else {
               const closed=await new Promise(resolve=>{
@@ -2732,7 +2833,11 @@ export function releaseThemeSettings() {
           }
           if(preferences().lastChats[avatar]===oldName)preferences().lastChats[avatar]=actual;
           for(const page of pageTrail)if(page.avatar===avatar && chatFile(page.file)===oldName){page.file=actual;page.chatKey=JSON.stringify([avatar,actual]);}
-          if(current){if($('#selected_chat_pole'))$('#selected_chat_pole').value=actual;await ctx().reloadCurrentChat();}
+          if(current){
+            if($('#selected_chat_pole'))$('#selected_chat_pole').value=actual;
+            chatLoadDepth++;
+            try{await ctx().reloadCurrentChat();}finally{chatLoadDepth--;}
+          }
           const type=context.eventTypes.CHAT_RENAMED;if(type)await context.eventSource.emit(type,{avatarId:avatar,oldFileName:item.file_name,newFileName:actual+'.jsonl'});
         }
         sessionData.delete(avatar);ctx().saveSettingsDebounced();
@@ -2755,7 +2860,7 @@ export function releaseThemeSettings() {
     const c=ctx(), filename=chatFile(c.chatId);
     if(!filename || !['jsonl','txt'].includes(format)) return;
     const body={is_group:c.groupId!=null,avatar_url:selected()?.avatar,file:filename+'.jsonl',exportfilename:filename+'.'+format,format};
-    await c.saveChat();
+    await saveChatSafely();
     const data=await post('/api/chats/export',body);
     if(typeof data.result!=='string') throw Error('未能导出当前存档');
     downloadData(body.exportfilename,data.result,format==='txt'?'text/plain':'application/x-ndjson');
@@ -2935,7 +3040,7 @@ export function releaseThemeSettings() {
         await applyPair(choice,target);
         if (pairScope()!==scope) throw Error('聊天已切换。');
         meta[KEY] ||= {}; meta[KEY].pairing=choice; touched=true;
-        await c.saveMetadata();
+        await saveChatSafely({metadata:true});
         const stored=c.groupId!=null ? await post('/api/chats/group/get',{id:c.chatId}) :
           await post('/api/chats/get',{avatar_url:c.characters[c.characterId].avatar,file_name:c.chatId});
         const check=stored?.[0]?.chat_metadata?.[KEY]?.pairing;
@@ -2981,6 +3086,7 @@ export function releaseThemeSettings() {
   }
   async function openPairPicker() {
     if (pairDialog) return;
+    if(chatTransitionBusy() || openingStory || branchBusy || chatWriteDepth){toast('请等存档加载或保存完成后再选择预设和模型。');return;}
     const scope=pairScope();
     if (!scope) {toast('请先打开聊天存档。');return;}
     function pairSearch(kind,title,label,placeholder){
@@ -3826,10 +3932,11 @@ export function releaseThemeSettings() {
   async function savePersonaLocks(c,id,before,after) {
     const p=c.powerUserSettings,conn=personaConnection(c);
     if(c.chatId&&before.chat!==after.chat){
+      assertChatIdentity(chatIdentity(c));
       const previous=c.chatMetadata.persona;
       if(after.chat)c.chatMetadata.persona=id;
       else if(previous===id)delete c.chatMetadata.persona;
-      try{await c.saveMetadata();}catch(e){if(previous===undefined)delete c.chatMetadata.persona;else c.chatMetadata.persona=previous;throw e;}
+      try{await saveChatSafely({metadata:true});}catch(e){if(previous===undefined)delete c.chatMetadata.persona;else c.chatMetadata.persona=previous;throw e;}
     }
     if(before.default!==after.default) {
       if(after.default)p.default_persona=id;
@@ -3846,6 +3953,7 @@ export function releaseThemeSettings() {
 
   }
   async function deleteManagedPersona(id) {
+    if(chatTransitionBusy() || openingStory)throw Error('请等存档加载完成后再删除面具。');
     const c=ctx(), was=await personaCommand('get',{field:'avatar'}), previousLock=c.chatMetadata?.persona;
     if(await personaCommand('delete',{persona:id,silent:'true'})!=='true')throw Error('面具删除失败');
     let now=await personaCommand('get',{field:'avatar'});
@@ -3857,7 +3965,7 @@ export function releaseThemeSettings() {
       const lock=previousLock===id?undefined:previousLock;
       if(c.chatMetadata.persona!==lock){
         if(lock===undefined)delete c.chatMetadata.persona;else c.chatMetadata.persona=lock;
-        await c.saveMetadata();
+        await saveChatSafely({metadata:true});
       }
     }
     return now;
@@ -4213,6 +4321,11 @@ export function releaseThemeSettings() {
   function hasUserMessage(messages) {
     return Array.isArray(messages) && messages.some(m=>m?.is_user && !m.is_system);
   }
+  function hasArchiveConversation(messages,metadata={}){
+    const data=metadata?.[KEY];
+    return data?.started===true || hasUserMessage(messages) ||
+      hasUserMessage(data?.branches?.parked?.map(node=>node?.message));
+  }
   function archiveTime(file) {
     const value=file.last_mes;
     if(typeof value==='number')return value;
@@ -4235,7 +4348,7 @@ export function releaseThemeSettings() {
           if(facts?.fingerprint!==fingerprint) {
             const messages=await post('/api/chats/get',{avatar_url:c.avatar,file_name:chatFile(file.file_name)});
             if(!Array.isArray(messages))throw Error('存档读取失败，请稍后再试。');
-            facts={fingerprint,started:hasUserMessage(messages),rounds:countRounds(messages)};
+            facts={fingerprint,started:hasArchiveConversation(messages.slice(1),messages[0]?.chat_metadata),rounds:countRounds(messages)};
             archiveFacts.set(key,facts);
           }
           list.push({...file,...facts});
@@ -4250,7 +4363,8 @@ export function releaseThemeSettings() {
   }
   async function rememberChat() {
     const context=ctx(), c=selected(), file=chatFile(context?.chatId);
-    if(context?.groupId!=null || !c || !file || !hasUserMessage(context.chat))return;
+    if(context?.groupId!=null || !c || !file || !hasArchiveConversation(context.chat,context.chatMetadata))return;
+    context.chatMetadata[KEY]||={};context.chatMetadata[KEY].started=true;
     if(preferences().lastChats[c.avatar]===file)return;
     preferences().lastChats[c.avatar]=file;
     context.saveSettingsDebounced();
@@ -4383,7 +4497,7 @@ export function releaseThemeSettings() {
     root.innerHTML=sideBar()+content+bottomNav();
     const soundButton = root.querySelector('[data-action="page-sound"]');
     if (soundButton) updateSoundButton(soundButton);
-    dismissArchiveMenu();
+    if(archivePopup && !archivePopup.anchor.isConnected)dismissArchiveMenu();
     if(scroll)restoreScroll(scroll);
     syncCardWidgets();
     applyStoryStyle();
@@ -4415,6 +4529,7 @@ export function releaseThemeSettings() {
   let openingCharacter=false;
   async function openCharacter(id,file){
     if(openingCharacter)return;
+    if(openingStory || chatWriteDepth || branchBusy || archiveBusy){toast('当前聊天正在保存或处理，请稍后再进入角色。');return;}
     openingCharacter=true;
     const origin=capturePage(), revision=navigationRevision;
     try {
@@ -4435,7 +4550,7 @@ export function releaseThemeSettings() {
       if(revision!==navigationRevision)return;
       if(target && String(ctx().characterId)!==String(id))c.chat=chatFile(target.file_name);
       if(!await selectForPage(id,false) || revision!==navigationRevision)return;
-      if(target && chatFile(ctx().chatId)!==chatFile(target.file_name))await ctx().openCharacterChat(chatFile(target.file_name));
+      if(target && chatFile(ctx().chatId)!==chatFile(target.file_name))await loadChatFile(target.file_name);
       if(revision!==navigationRevision)return;
       await rememberChat();
       toolOrigin=null;
@@ -4467,10 +4582,19 @@ export function releaseThemeSettings() {
     overlay.className='lj-modal-backdrop';overlay.innerHTML=`<section class="lj-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(name)}" style="max-width:${width}"><header class="lj-modal-header">${back}<strong>${escapeHtml(name)}</strong><button class="lj-iconbutton" data-action="close-modal" aria-label="关闭">${icon('close')}</button></header><div class="lj-modal-content">${html}</div></section>`;portal.append(overlay);overlay.querySelector('button')?.focus();return overlay;
   }
   function backgroundModal() {
+    if(chatTransitionBusy() || openingStory){toast('请等存档加载完成后再更换背景。');return;}
     const c=selected();if(!c)return;const b=backgroundScope==='character'?(preferences().backgrounds[c.avatar]||{mode:'default',dim:.42,blur:3}):bgSettings();
     modal('聊天背景',`<p class="lj-muted lj-small">当前角色 ${escapeHtml(c.name)}</p><label>保存范围</label><select id="lj-background-scope" aria-label="背景保存范围"><option value="character" ${backgroundScope==='character'?'selected':''}>角色默认背景</option><option value="chat" ${backgroundScope==='chat'?'selected':''}>仅当前聊天存档</option></select><div class="lj-bg-options"><button class="lj-bg-option ${!b.url?'active':''}" data-action="default-bg" aria-label="使用角色图"><img src="${escapeHtml(avatar(c))}" alt="默认角色图"></button><button class="lj-bg-option ${b.url?'active':''}" data-action="upload-bg">${icon('plus')}<span>自定义换图</span></button></div><div class="lj-filters">${['default','immersive','focus','custom'].map((m,i)=>`<button data-action="bg-mode" data-mode="${m}" class="${(b.mode||'default')===m?'active':''}">${['默认','沉浸','专注','自定义'][i]}</button>`).join('')}</div><label>背景遮罩 <span id="lj-dim-value">${Math.round(b.dim*100)}%</span></label><input type="range" min="0" max="90" value="${Math.round(b.dim*100)}" id="lj-bg-dim" style="width:100%" aria-label="背景遮罩"><label>背景模糊 <span id="lj-blur-value">${b.blur}px</span></label><input type="range" min="0" max="20" value="${b.blur}" id="lj-bg-blur" style="width:100%" aria-label="背景模糊"><p class="lj-muted lj-small">上传的图片保存在酒馆自己的背景库中。原背景管理功能继续保留。</p>`, '420px');
   }
-  function setBackground(update) { const c=selected();if(!c)return;if(backgroundScope==='chat'){ctx().chatMetadata[KEY]||={};ctx().chatMetadata[KEY].background={...bgSettings(),...update};ctx().saveChat();}else{preferences().backgrounds[c.avatar]={...(preferences().backgrounds[c.avatar]||{mode:'default',dim:.42,blur:3}),...update};persist();}applyBackground(); }
+  function setBackground(update) {
+    const c=selected();if(!c)return;
+    if(chatTransitionBusy() || openingStory || branchBusy || archiveBusy){toast('请等存档加载或保存完成后再更换背景。');return;}
+    if(backgroundScope==='chat'){
+      ctx().chatMetadata[KEY]||={};ctx().chatMetadata[KEY].background={...bgSettings(),...update};
+      Promise.resolve().then(()=>saveChatSafely()).catch(error=>toast(error.message));
+    }else{preferences().backgrounds[c.avatar]={...(preferences().backgrounds[c.avatar]||{mode:'default',dim:.42,blur:3}),...update};persist();}
+    applyBackground();
+  }
   function applyBackground(){const b=bgSettings(),el=root.querySelector('.lj-chat-background');if(el){el.style.setProperty('--lj-dim',String(b.dim));el.style.setProperty('--lj-blur',`${b.blur}px`);const img=el.querySelector('img');if(img)img.src=b.url||avatar(selected());}}
   async function uploadBackground() {
     const input=D.createElement('input');input.type='file';input.accept='image/*';
@@ -4492,6 +4616,7 @@ export function releaseThemeSettings() {
       ctx()?.extensionSettings?.baibai_book?.enabled !== false;
   }
   function memoryModal() {
+    if(chatTransitionBusy() || openingStory){toast('请等存档加载完成后再查看或保存记忆。');return;}
     const scope=pairScope();
     if(!scope){toast('请先进入角色对话');return;}
     const m=memoryData().memory;
@@ -4554,10 +4679,10 @@ export function releaseThemeSettings() {
           const saved=changed.map(input=>input.value);
           changed.forEach((input,i)=>{data[input.dataset.memoryText]=saved[i];});
           const checkbox=layer.querySelector('#lj-memory-enabled'), enabled=checkbox.checked;
-          data.enabled=enabled;saveMemorySnapshot();syncMemoryPrompt();await ctx().saveChat();
+          data.enabled=enabled;saveMemorySnapshot();syncMemoryPrompt();await saveChatSafely();
           changed.forEach((input,i)=>{input.defaultValue=saved[i];});checkbox.defaultChecked=enabled;
           if(scope===pairScope())toast('当前存档记忆已保存');
-        }catch(error){toast('保存记忆失败，请重试');}finally{b.disabled=false;}
+        }catch(error){toast(error.message||'保存记忆失败，请重试');}finally{b.disabled=false;}
       }else if(b.hasAttribute('data-bai-open') || b.dataset.baiId){
         const row=state.rows.find(n=>n.id===b.dataset.baiId);
         if(b.dataset.baiId&&!row){refresh();return;}
@@ -4765,6 +4890,7 @@ export function releaseThemeSettings() {
       else if(action.startsWith('profile-'))await handleProfileAction(action,el);
       else if(action==='archive-menu')archiveMenu(el.dataset.id,el.dataset.file,el);
       else if(action==='manage-archives')await profileArchives(el.dataset.id);
+      else if(action==='archive-native')await openArchiveBackups(el.dataset.id);
       else if(action==='archive-pick')chooseMessageTools(el.dataset.key);
       else if(action==='greetings')await showStories();
       else if(action==='new-chat'){portal.querySelector('.lj-modal-backdrop')?.remove();$('#option_start_new_chat')?.click();}
