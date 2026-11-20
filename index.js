@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.26';
+    const VERSION = '0.4.27';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -1313,7 +1313,7 @@ export function releaseThemeSettings() {
     const c=selected(),index=editingStoryIndex,greetings=storyResources(),text=$('#lj-story-text').value;
     if(index===0)greetings[0]=text;else greetings[index]=text;
     const meta={...storyMeta(index),date:new Date().toISOString(),name:$('#lj-story-name').value,world:$('#lj-story-world').value,background:$('#lj-story-background').value,css:$('#lj-story-css').value};
-    await post('/api/characters/merge-attributes',{avatar:c.avatar,data:{first_mes:greetings[0],alternate_greetings:greetings.slice(1)}});
+    await post('/api/characters/merge-attributes',{avatar:c.avatar,data:{first_mes:greetings[0],alternate_greetings:greetings.slice(1)}},'text');
     preferences().stories||={};preferences().stories[c.avatar]||={};preferences().stories[c.avatar][index]=meta;await persist(true);
     await getOneCharacter(c.avatar);closeDialog();render();
     const parent=visibleDialog(),grid=parent?.querySelector('.lj-story-grid');
@@ -2288,7 +2288,7 @@ export function releaseThemeSettings() {
   }
   function closeDeleteBar() {
     if (!messageDeleteBar) return;
-    messageDeleteBar.el.remove();
+    messageDeleteBar.layer.remove();
     D.querySelectorAll('.lj-pending-delete').forEach(el => el.classList.remove('lj-pending-delete'));
     messageDeleteBar = null;
   }
@@ -2407,11 +2407,14 @@ export function releaseThemeSettings() {
     if (!ref.message || (!index && !ref.message.is_user)) {toast('开场白可在右侧的故事选择中切换。');return;}
     const targets = branchDeleteTargets(index);
     dismissMessageMenu(); closeDeleteBar();
-    const el = D.createElement('div');
+    const layer = D.createElement('div');
+    layer.className = 'lj-modal-backdrop lj-message-delete-layer';
+    const el = D.createElement('section');
     el.className = 'lj-delete-message-bar';
-    el.setAttribute('role','alertdialog'); el.setAttribute('aria-label','删除消息');
-    el.innerHTML = `<div><strong>删除这条消息？</strong><small>将删除这条消息和从它继续的所有消息、分支及记忆，共 ${targets.length} 条。</small></div><button type="button" data-lj-msg="cancel-delete">取消</button><button type="button" data-lj-msg="confirm-delete">确认删除</button>`;
-    portal.append(el); messageDeleteBar={el,ref};
+    el.setAttribute('role','alertdialog'); el.setAttribute('aria-modal','true'); el.setAttribute('aria-label','删除消息');
+    el.setAttribute('aria-describedby','lj-delete-message-detail');
+    el.innerHTML = `<div><strong>删除这条消息？</strong><small id="lj-delete-message-detail">将删除这条消息和从它继续的所有消息、分支及记忆，共 ${targets.length} 条。</small></div><button type="button" data-lj-msg="cancel-delete">取消</button><button type="button" data-lj-msg="confirm-delete">确认删除</button>`;
+    layer.append(el);portal.append(layer); messageDeleteBar={el,ref,layer};
     const targetSet = new Set(targets);
     const graph=branchGraph();
     for (const row of D.querySelectorAll('#chat > .mes[mesid]')) {
@@ -4304,10 +4307,10 @@ export function releaseThemeSettings() {
     const el = D.createElement('div'); el.className = 'lj-toast'; el.setAttribute('role','status'); el.textContent = message; (portal || root).append(el);
     W.clearTimeout(toastTimer); toastTimer = W.setTimeout(() => el.remove(), 4000);
   }
-  async function post(url, data) {
+  async function post(url, data, responseType='json') {
     const response = await W.fetch(url,{method:'POST',headers:ctx().getRequestHeaders(),body:JSON.stringify(data)});
     if (!response.ok) throw new Error(`${url} (${response.status})`);
-    return response.json();
+    return responseType==='text'?response.text():response.json();
   }
   function characterEntries() { return (ctx()?.characters || []).map((c,id) => ({c,id})).filter(({c}) => c && c.avatar); }
   function selected() { return ctx()?.characters?.[ctx()?.characterId]; }
