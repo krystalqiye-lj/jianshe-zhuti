@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-  const VERSION = '0.4.24';
+  const VERSION = '0.4.25';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -74,6 +74,7 @@ export function releaseThemeSettings() {
     globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c6 6 6 12 0 18-6-6-6-12 0-18"/>',
     chart:'<path d="M4 3v18h17M8 16v-5m5 5V7m5 9V4"/>',
     leaf:'<path d="M20 3C9 2 1 7 5 16c9 6 15-2 15-13ZM5 19l9-10"/>',
+    archive:'<rect x="4" y="7" width="16" height="14" rx="2"/><path d="M3 3h18v4H3zM9 12h6"/>',
     image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',
   };
   const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.preset}</svg>`;
@@ -1252,19 +1253,25 @@ export function releaseThemeSettings() {
     if(grid)parent.querySelector('.lj-modal-content').innerHTML=(dialogName(parent)==='重启对话'?'<p>选择一个开场白，开始新的存档。</p>':'')+storyCards();toast('故事与全部开场白已保存');
   }
   async function startStory(index){
+    if(openingStory)return;
+    openingStory=true;
+    try {
     if(ctx().streamingProcessor){toast('请先等待当前回复完成');return;}
     const greetings=storyResources(),meta=storyMeta(index);
     if(!greetings[index]){toast('这个开场故事还没有内容');return;}
     portal.querySelector('.lj-modal-backdrop')?.remove();
-    await ctx().executeSlashCommandsWithOptions('/newchat');
+    if(hasUserMessage(ctx().chat))await ctx().executeSlashCommandsWithOptions('/newchat');
     const actualIndex=greetings[0]?index:index-1;
     const message=ctx().chat[0];
     if(message?.swipes?.length&&actualIndex>=0&&actualIndex<message.swipes.length)await ctx().swipe.to(null,'right',{source:'slash_command',forceMesId:0,forceSwipeId:actualIndex,forceDuration:0});
     ctx().chatMetadata[KEY]||={memory:{short:'',long:'',permanent:'',enabled:false}};
     ctx().chatMetadata[KEY].storyIndex=index;
+    delete ctx().chatMetadata.world_info;
+    delete ctx().chatMetadata[KEY].background;
     if(meta.world)ctx().chatMetadata.world_info=meta.world;
     if(meta.background)ctx().chatMetadata[KEY].background={...bgSettings(),url:meta.background};
-    await ctx().saveChat();navigate('chat');applyStoryStyle();toast('已开启 '+(meta.name||openingLabel(index,storyResources().length)));
+    await ctx().saveChat();navigate('chat');applyStoryStyle();toast('已选择 '+(meta.name||openingLabel(index,storyResources().length)));
+    } finally {openingStory=false;}
   }
   function applyStoryStyle(){
     const old=D.getElementById('lj-story-style');
@@ -2618,12 +2625,131 @@ export function releaseThemeSettings() {
     await ctx().unshallowCharacter(ctx().characterId);
     if(route==='chat' && selected()?.avatar===c.avatar && !selected().shallow) render();
   }
-  async function profileArchives() {
-    const c=selected(), id=ctx().characterId;
-    const dialog=modal('存档管理',`<div class="lj-archive-tools">${archiveKeys.filter(k=>k!=='mes_bookmark'||ctx().chat.some(m=>m.extra?.bookmark_link)).map(k=>`<button class="lj-soft" data-action="archive-pick" data-key="${k}">${nativeMessageLabels[k]}</button>`).join('')}</div><div class="lj-list" data-archives>正在读取存档…</div>`,'560px');
-    sessionData.delete(c.avatar);
-    const list=await sessions(c);
-    if(dialog.isConnected && selected()?.avatar===c.avatar){const area=dialog.querySelector('[data-archives]');area.innerHTML=sessionItems(list,id)||'还没有其他存档';await labelArchiveOpenings(area,list,id);}
+  let archivePopup, archiveBusy=false, openingStory=false;
+  function dismissArchiveMenu(){
+    if(!archivePopup)return;
+    archivePopup.anchor.setAttribute('aria-expanded','false');
+    archivePopup.el.remove();archivePopup=null;
+  }
+  async function profileArchives(id=ctx().characterId) {
+    const c=ctx().characters[id];if(!c)return;
+    const dialog=modal('存档管理',
+      '<div class="lj-list" data-archives>正在读取存档…</div>'+
+      (selected()?.avatar===c.avatar?'<details class="lj-archive-advanced"><summary>更多存档操作</summary><div class="lj-archive-tools">'+archiveKeys.filter(k=>k!=='mes_bookmark'||ctx().chat.some(m=>m.extra?.bookmark_link)).map(k=>'<button class="lj-soft" data-action="archive-pick" data-key="'+k+'">'+nativeMessageLabels[k]+'</button>').join('')+'</div></details>':''), '460px');
+    dialog.classList.add('lj-archives-sheet');
+    const header=dialog.querySelector('.lj-modal-header');
+    header.querySelectorAll('button').forEach(button=>button.remove());
+    const back=D.createElement('button');back.type='button';back.className='lj-iconbutton';
+    back.dataset.action='close-modal';back.setAttribute('aria-label','返回原页面');back.innerHTML=icon('back');header.prepend(back);
+    dialog.dataset.archiveAvatar=c.avatar;
+    const list=await sessions(c,true,true);
+    if(!dialog.isConnected)return;
+    const started=list.filter(f=>f.started), previews=list.filter(f=>!f.started);
+    const area=dialog.querySelector('[data-archives]');
+    area.innerHTML=sessionItems(started,id)||'<p class="lj-muted">发出第一条消息后，聊天会显示在这里。</p>';
+    if(previews.length)area.insertAdjacentHTML('beforeend',
+      '<details class="lj-preview-archives"><summary>未开始的预览（'+previews.length+'）</summary>'+sessionItems(previews,id)+'</details>');
+    await labelArchiveOpenings(area,list,id);
+  }
+  function archiveMenu(id,file,anchor){
+    if(archivePopup?.anchor===anchor){dismissArchiveMenu();return;}
+    dismissArchiveMenu();
+    const c=ctx().characters[id];if(!c)return;
+    const el=D.createElement('div');el.className='lj-msg-popover lj-archive-menu';
+    el.setAttribute('role','menu');el.setAttribute('aria-label','存档操作');
+    el.innerHTML='<button type="button" role="menuitem" data-rename>'+icon('edit')+'重命名</button><button type="button" role="menuitem" data-delete>'+messageIcon('trash')+'删除</button>';
+    archivePopup={el,anchor};portal.append(el);anchor.setAttribute('aria-expanded','true');
+    const r=anchor.getBoundingClientRect(),size=el.getBoundingClientRect();
+    el.style.left=Math.max(8,Math.min(r.right-size.width,W.innerWidth-size.width-8))+'px';
+    el.style.top=Math.max(8,Math.min(r.bottom+6,W.innerHeight-size.height-8))+'px';
+    const open=remove=>{dismissArchiveMenu();editArchive(c.avatar,file,remove);};
+    el.querySelector('[data-rename]').onclick=()=>open(false);
+    el.querySelector('[data-delete]').onclick=()=>open(true);
+    el.querySelector('button').focus({preventScroll:true});
+  }
+  function editArchive(avatar,file,remove){
+    const label=archiveTitle(file);
+    const layer=modal(remove?'删除存档':'重命名存档',remove?
+      '<p>确认删除「'+escapeHtml(label)+'」及其中的全部聊天记录？删除后无法撤销。</p>':
+      '<label for="lj-archive-name">存档名称</label><input id="lj-archive-name" maxlength="120" value="'+escapeHtml(archiveTitle(file))+'" autocomplete="off">', '420px');
+    layer.querySelector('.lj-modal-content').insertAdjacentHTML('beforeend',
+      '<p data-archive-error role="status" class="lj-muted"></p><div class="lj-form-actions"><button type="button" class="lj-soft" data-action="close-modal">取消</button><button type="button" class="lj-primary" data-save-archive>'+ (remove?'确认删除':'保存名称')+'</button></div>');
+    const save=layer.querySelector('[data-save-archive]'),field=layer.querySelector('input'),error=layer.querySelector('[data-archive-error]');
+    if(field){field.focus();field.select();field.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click();}});}
+    save.onclick=async()=>{
+      if(archiveBusy)return;
+      archiveBusy=true;const controls=[...layer.querySelectorAll('button,input')];controls.forEach(el=>el.disabled=true);
+      try {
+        const context=ctx(),id=context.characters.findIndex(c=>c?.avatar===avatar),c=context.characters[id];
+        if(!c)throw Error('这个角色已被移除。');
+        if(context.streamingProcessor)throw Error('请先等待当前回复完成。');
+        const list=await sessions(c,true,true), item=list.find(f=>chatFile(f.file_name)===chatFile(file));
+        if(!item)throw Error('存档已被移走，请关闭后重新打开存档管理。');
+        const oldName=chatFile(item.file_name),current=selected()?.avatar===avatar && chatFile(ctx().chatId)===oldName;
+        const host=await import('/script.js');
+        if(host.is_send_press || host.isGenerating?.())throw Error('请先等待当前回复完成。');
+        if(current)await ctx().saveChat();
+        host.cancelDebouncedChatSave?.();
+        if(remove){
+          // Switch first so delayed native saves cannot recreate the deleted file.
+          const next=list.find(f=>f.started && f.file_name!==item.file_name)||list.find(f=>f.file_name!==item.file_name);
+          if(current){
+            if(next)await ctx().openCharacterChat(chatFile(next.file_name));
+            else if(host.closeCurrentChat){if(!await host.closeCurrentChat())throw Error('请先停止当前回复。');}
+            else {
+              const closed=await new Promise(resolve=>{
+                const type=context.eventTypes.CHAT_CHANGED;
+                const done=()=>{if(selected()?.avatar===avatar)return;finish(true);};
+                const finish=value=>{W.clearTimeout(timer);context.eventSource.removeListener(type,done);resolve(value);};
+                const timer=W.setTimeout(()=>finish(false),8000);
+                context.eventSource.on(type,done);$('#option_close_chat')?.click();
+              });
+              if(!closed)throw Error('请先退出当前对话，再删除这个存档。');
+            }
+            if(selected()?.avatar===avatar && chatFile(ctx().chatId)===oldName)throw Error('当前存档尚未退出，请重试。');
+          }
+          await post('/api/chats/delete',{avatar_url:avatar,chatfile:item.file_name});
+          if(chatFile(c.chat)===oldName){
+            c.chat=next?chatFile(next.file_name):'';
+            const response=await W.fetch('/api/characters/merge-attributes',{method:'POST',headers:ctx().getRequestHeaders(),body:JSON.stringify({avatar,chat:c.chat})});
+            if(!response.ok)console.warn('[建设主题] 最近存档指向未保存');
+          }
+          if(preferences().lastChats[avatar]===oldName)delete preferences().lastChats[avatar];
+          for(let i=pageTrail.length-1;i>=0;i--)if(pageTrail[i].avatar===avatar && chatFile(pageTrail[i].file)===oldName)pageTrail.splice(i,1);
+          const type=context.eventTypes.CHAT_DELETED;if(type)await context.eventSource.emit(type,oldName);
+        }else{
+          const name=chatFile(field.value.trim());
+          if(!name || name==='.' || name==='..' || /[\\/:*?"<>|\x00-\x1f]/.test(name))throw Error('请填写名称，并去掉路径符号。');
+          if(name===oldName){closeDialog(layer);return;}
+          if(list.some(f=>chatFile(f.file_name).toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('已有同名存档，请换一个名称。');
+          const result=await post('/api/chats/rename',{is_group:false,avatar_url:avatar,original_file:item.file_name,renamed_file:name+'.jsonl'});
+          if(result?.error)throw Error('名称未能保存，请重试。');
+          const actual=result.sanitizedFileName||name;
+          if(chatFile(c.chat)===oldName){
+            c.chat=actual;
+            const response=await W.fetch('/api/characters/merge-attributes',{method:'POST',headers:ctx().getRequestHeaders(),body:JSON.stringify({avatar,chat:actual})});
+            if(!response.ok)console.warn('[建设主题] 最近存档指向未保存');
+          }
+          if(preferences().lastChats[avatar]===oldName)preferences().lastChats[avatar]=actual;
+          for(const page of pageTrail)if(page.avatar===avatar && chatFile(page.file)===oldName){page.file=actual;page.chatKey=JSON.stringify([avatar,actual]);}
+          if(current){if($('#selected_chat_pole'))$('#selected_chat_pole').value=actual;await ctx().reloadCurrentChat();}
+          const type=context.eventTypes.CHAT_RENAMED;if(type)await context.eventSource.emit(type,{avatarId:avatar,oldFileName:item.file_name,newFileName:actual+'.jsonl'});
+        }
+        sessionData.delete(avatar);ctx().saveSettingsDebounced();
+        const remaining=await sessions(c,true,true);applyArchiveCount(c,remaining.filter(f=>f.started),true);
+        if(!layer.isConnected)return;
+        closeDialog(layer);const parent=visibleDialog();
+        if(parent?.dataset.archiveAvatar===avatar){
+          const area=parent.querySelector('[data-archives]'),started=remaining.filter(f=>f.started),previews=remaining.filter(f=>!f.started);
+          area.innerHTML=sessionItems(started,id)||'<p class="lj-muted">还没有已开始的存档。</p>';
+          if(previews.length)area.insertAdjacentHTML('beforeend','<details class="lj-preview-archives" open><summary>未开始的预览（'+previews.length+'）</summary>'+sessionItems(previews,id)+'</details>');
+        }
+        const expanded=root?.querySelector('[data-sessions="'+id+'"]');
+        if(expanded&&!expanded.hidden)expanded.innerHTML='<button class="lj-soft" data-action="manage-archives" data-id="'+id+'">管理存档</button>'+sessionItems(remaining.filter(f=>f.started),id);
+        render();toast(remove?'存档已删除':'存档名称已保存');
+      }catch(e){error.textContent=e.message;}
+      finally{archiveBusy=false;controls.forEach(el=>el.disabled=false);}
+    };
   }
   async function exportCurrentChat(format) {
     const c=ctx(), filename=chatFile(c.chatId);
@@ -4257,6 +4383,7 @@ export function releaseThemeSettings() {
     root.innerHTML=sideBar()+content+bottomNav();
     const soundButton = root.querySelector('[data-action="page-sound"]');
     if (soundButton) updateSoundButton(soundButton);
+    dismissArchiveMenu();
     if(scroll)restoreScroll(scroll);
     syncCardWidgets();
     applyStoryStyle();
@@ -4322,9 +4449,18 @@ export function releaseThemeSettings() {
     const c=ctx().characters[id],list=await sessions(c);
     if(!el.isConnected)return;
     applyArchiveCount(c,list);
-    el.innerHTML=sessionItems(list,id)||'<p class="lj-muted lj-small">暂无存档，点击角色开始聊天。</p>';await labelArchiveOpenings(el,list,id);
+    el.innerHTML='<button class="lj-soft" data-action="manage-archives" data-id="'+id+'">管理存档</button>'+(sessionItems(list,id)||'<p class="lj-muted lj-small">暂无存档，点击角色开始聊天。</p>');await labelArchiveOpenings(el,list,id);
   }
-  function sessionItems(list,id) { return list.map(x=>`<button class="lj-session-item" data-action="open-session" data-id="${id}" data-file="${escapeHtml(x.file_name)}"><strong>${escapeHtml(archiveTitle(x.file_name))}</strong><small><span data-archive-opening></span>${escapeHtml(plain(x.mes || x.preview || '').slice(0,85))} · ${Number(x.chat_items)||0} 条消息</small></button>`).join(''); }
+  function sessionItems(list,id) {
+    const avatar=ctx().characters[id]?.avatar;
+    return list.map(file=>{
+      const active=selected()?.avatar===avatar && chatFile(ctx().chatId)===chatFile(file.file_name);
+      const time=new Date(archiveTime(file)),pad=n=>String(n).padStart(2,'0');
+      const date=archiveTime(file)?time.getFullYear()+'-'+pad(time.getMonth()+1)+'-'+pad(time.getDate())+' '+pad(time.getHours())+':'+pad(time.getMinutes()):'';
+      const name=archiveTitle(file.file_name);
+      return `<article class="lj-save-card ${active?'lj-save-current':''}" data-file="${escapeHtml(file.file_name)}" data-id="${id}"><button type="button" class="lj-save-open" data-action="open-session" data-id="${id}" data-file="${escapeHtml(file.file_name)}"><strong>${icon('archive')}${escapeHtml(name)}</strong><p>${file.started?escapeHtml(plain(file.mes||file.preview||'').slice(0,120)):'尚未发送用户消息'}</p><small><span data-archive-opening></span>${escapeHtml(date)}${active?' · 当前':''}</small></button><button type="button" class="lj-iconbutton lj-save-more" data-action="archive-menu" data-id="${id}" data-file="${escapeHtml(file.file_name)}" aria-label="存档操作 ${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false">···</button></article>`;
+    }).join('');
+  }
   function modal(name,html,width='760px') {
     const overlay=D.createElement('div');suspendDialog(overlay,dialogName(visibleDialog())===name);
     const parent=dialogParents.get(overlay), back=parent?`<button class="lj-iconbutton" data-action="close-modal" aria-label="返回${escapeHtml(dialogName(parent.layer))}">${icon('back')}</button>`:route==='chat'?chatReturnButton():'';
@@ -4627,6 +4763,8 @@ export function releaseThemeSettings() {
       else if(action==='tool'){const tool=el.dataset.tool;if(tool.startsWith('native:'))openNative(tool.split(':')[1]);else if(tool==='memory')memoryModal();else if(tool==='tree')await showMessageTree();else if(tool==='message-tools')chooseMessageTools();else if(tool==='world-library')navigate('worlds');else if(tool==='regex'||tool==='quickreply')await openExtensionGroup(tool==='regex'?'#regex_presets_block':'#qr--editor');else if(tool==='greetings')await showStories();}
       else if(action==='native-summary')await openExtensionGroup('#memory_prompt_interval_auto');
       else if(action.startsWith('profile-'))await handleProfileAction(action,el);
+      else if(action==='archive-menu')archiveMenu(el.dataset.id,el.dataset.file,el);
+      else if(action==='manage-archives')await profileArchives(el.dataset.id);
       else if(action==='archive-pick')chooseMessageTools(el.dataset.key);
       else if(action==='greetings')await showStories();
       else if(action==='new-chat'){portal.querySelector('.lj-modal-backdrop')?.remove();$('#option_start_new_chat')?.click();}
@@ -4764,6 +4902,7 @@ export function releaseThemeSettings() {
     root=D.createElement('div');root.id='lj-root';D.body.append(root);D.body.classList.add('lj-active');
     portal=D.createElement('div');portal.id='lj-portal';D.body.append(portal);
     on(root,'click',handleClick);on(portal,'click',handleClick);
+    on(D,'click',event=>{if(archivePopup&&!archivePopup.el.contains(event.target)&&!archivePopup.anchor.contains(event.target))dismissArchiveMenu();},true);
     on(D,'click',e=>{
       if(!originalView && toolOrigin && route==='chat' && !e.target.closest('#lj-portal,dialog,.TH-popup,.lj-chat-command-panel') && !portal.querySelector('.lj-modal-backdrop'))toolOrigin=null;
     },true);
@@ -4789,6 +4928,7 @@ export function releaseThemeSettings() {
         return;
       }
       if(event.key!=='Escape'||event.defaultPrevented||!D.body.classList.contains('lj-active')||D.querySelector('dialog[open], .TH-popup[role="dialog"]'))return;
+      if(archivePopup){dismissArchiveMenu();return;}
       if(pairDialog){pairDialog.close();return;}
       const layer=visibleDialog();
       if(layer){const close=layer.querySelector('[data-action="close-modal"]');if(close)close.click();else closeDialog(layer);return;}
