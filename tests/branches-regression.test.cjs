@@ -19,6 +19,10 @@ function fixture(messages, {group = false} = {}) {
   let generation = 0;
   let failGenerate = false;
   let failSave = false;
+  let interceptedNotice;
+  let rows = messages.map(m => ({text:m.mes}));
+  let runtimes = rows.slice();
+  const events = [];
   const requests = [];
   const draft = {value:'/draft-only', dispatchEvent() {}};
   const env = {
@@ -29,9 +33,17 @@ function fixture(messages, {group = false} = {}) {
       chatId:'同名存档', characters:[{avatar:'a.png',name:'甲'},{avatar:'b.png',name:'乙'}], onlineStatus:'online',
       saveChat:async () => { if (!failSave) disk = copy(state); },
       reloadCurrentChat:async () => { state = copy(disk); },
+      clearChat:async () => { rows = []; },
+      printMessages:async () => { rows = state.chat.map(m => ({text:m.mes})); },
+      eventTypes:{CHAT_CHANGED:'chat_id_changed',CHAT_LOADED:'chatLoaded'},
+      eventSource:{emit:async (event, payload) => {
+        events.push({event,payload});
+        if (event === 'chatLoaded') runtimes = rows.slice();
+      }},
       generate:async (type, options) => {
         requests.push({type,options});
         if (failGenerate) throw new Error('模拟模型中断');
+        if (interceptedNotice) { state.chat.push(copy(interceptedNotice)); return; }
         if (type !== 'regenerate') assert.equal(draft.value, '');
         if (type === 'continue') state.chat.at(-1).mes += '……续写';
         else {
@@ -47,9 +59,55 @@ function fixture(messages, {group = false} = {}) {
   return {
     ...api, draft, requests, get state(){return state;}, get disk(){return disk;},
     reload(){state = copy(disk);}, failGeneration(value){failGenerate=value;}, failSaving(value){failSave=value;},
+    interceptGeneration(notice){interceptedNotice=notice;},
+    get rows(){return rows;}, get runtimes(){return runtimes;}, events,
     names(){return state.chat.map(m => m.mes);},
   };
 }
+
+test('full branch redraw follows native loaded lifecycle so HTML runtimes do not point at removed rows', async () => {
+  const a = fixture([bot('```html\n<!DOCTYPE html><body>美化</body>\n```'),user('问'),bot('答')]);
+  const originalRuntime = a.runtimes[0];
+  const old = a.branchGraph().activeAt.get(2).id;
+  await a.branchRetry(2);
+  assert.notEqual(a.runtimes[0],originalRuntime);
+  assert.deepEqual(a.runtimes,a.rows);
+  assert.deepEqual(a.events.map(e=>e.event),['chat_id_changed','chatLoaded']);
+  assert.equal(a.events[1].payload.detail.character.avatar,'a.png');
+  await a.branchSwitch(old);
+  await a.branchEdit(2,'编辑后的回答');
+  await a.branchDelete(2);
+  assert.deepEqual(a.runtimes,a.rows);
+  assert.equal(a.events.filter(e=>e.event==='chatLoaded').length,4);
+});
+
+for (const notice of [
+  {...bot('摘要尚未完成'),extra:{bbs_internal_notice:'backlog',bbs_omit:true}},
+  {name:'柏宝书',is_user:false,mes:'【柏宝书】本次生成已拦截\n请先补齐摘要'},
+]) test('blocked retry restores the entire original path and keeps the extension notice without counting it as a reply: '+notice.mes, async () => {
+  const a=fixture([bot('开场'),user('问'),bot('旧回复'),user('后续'),bot('旧结尾')]);
+  a.state.chatMetadata[key].memory={short:'原记忆'};
+  a.state.chatMetadata.variables={scene:'原场景'};
+  a.interceptGeneration(notice);
+  await assert.rejects(a.branchRetry(2),/柏宝书拦截/);
+  assert.deepEqual(a.names(),['开场','问','旧回复','后续','旧结尾']);
+  assert.equal(a.state.chatMetadata[key].memory.short,'原记忆');
+  assert.equal(a.state.chatMetadata.variables.scene,'原场景');
+  assert.ok(a.state.chatMetadata[key].branches.parked.some(n=>n.message.mes===notice.mes));
+  assert.deepEqual(a.disk.chat,copy(a.state.chat));
+  assert.deepEqual(a.runtimes,a.rows);
+});
+
+test('blocked edited-user branch keeps its input and original branch available after reload', async () => {
+  const a=fixture([bot('开场'),user('原问'),bot('原答')]);
+  const original=a.branchGraph().activeAt.get(1).id;
+  a.interceptGeneration({...bot('提示'),extra:{bbs_internal_notice:'backlog'}});
+  await assert.rejects(a.branchUser(1,'新问'),/柏宝书拦截/);
+  a.reload();
+  assert.equal(a.names()[1],'新问');
+  await a.branchSwitch(original);
+  assert.deepEqual(a.names(),['开场','原问','原答']);
+});
 
 test('user branch preserves original descendants, memory, current leaf and edited text after reload', async () => {
   const a = fixture([bot('开场'),user('原句'),bot('原结果'),user('后续'),bot('原结尾')]);
@@ -91,7 +149,7 @@ test('historical AI retry preserves nested paths and native alternate greetings,
   assert.deepEqual(a.names(),['开场乙']);
   await a.branchSwitch(aId);
   assert.deepEqual(a.names(),['开场甲','问','新回答1……续写']);
-  assert.deepEqual(a.state.chat[0].swipes,['开场甲','开场乙']);
+  assert.deepEqual(copy(a.state.chat[0].swipes),['开场甲','开场乙']);
 });
 
 test('legacy swipes open as siblings, preserve their media and retain descendants of active version alone',async () => {
@@ -175,7 +233,7 @@ test('opening swipes preserve the raw persona substitution template after switch
   const [first,second] = a.branchVariants(0).ids;
   await a.branchSwitch(second);
   await a.branchSwitch(first);
-  assert.deepEqual(a.state.chat[0].swipes,['你好{{user}}','第二个开场']);
+  assert.deepEqual(copy(a.state.chat[0].swipes),['你好{{user}}','第二个开场']);
 });
 
 test('a user-authored first message can branch or be deleted without removing its sister route',async () => {
