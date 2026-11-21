@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-    const VERSION = '0.4.27';
+    const VERSION = '0.4.28';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -1744,6 +1744,13 @@ export function releaseThemeSettings() {
       branchAssertSession(session);
       await context.printMessages();
       await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, context.chatId);
+      branchAssertSession(session);
+      // Match Tavern's full-chat reload lifecycle. Renderers such as TavernHelper
+      // keep iframe references until chatLoaded; CHAT_CHANGED alone leaves them
+      // attached to the removed DOM and exposes the new HTML code blocks.
+      await context.eventSource.emit(context.eventTypes.CHAT_LOADED || 'chatLoaded', {
+        detail:{id:context.characterId, character:context.characters?.[context.characterId]},
+      });
     } else await context.reloadCurrentChat();
     branchAssertSession(session);
     const input = $('#send_textarea');
@@ -1854,6 +1861,15 @@ export function releaseThemeSettings() {
     if (ctx().onlineStatus === 'no_connection') throw new Error('请先在模型设置里连接模型，再生成回复。');
   }
 
+  function branchBacklogNotice(message) {
+    return Boolean(message?.extra?.bbs_internal_notice) ||
+      (message?.name === '柏宝书' && String(message.mes || '').includes('【柏宝书】本次生成已拦截'));
+  }
+
+  function branchHasReply(messages) {
+    return messages.some(m => !m.is_user && !m.is_system && !branchBacklogNotice(m) && String(m.mes || '').trim());
+  }
+
   async function branchAlternate(index, text, user) {
     return branchRun(async session => {
       const graph = branchGraph(), node = branchTarget(index, user ? 'user' : 'assistant', graph);
@@ -1888,18 +1904,21 @@ export function releaseThemeSettings() {
       try {
         await branchGenerate(session, ctx().groupId == null && ctx().chat.at(-1)?.is_user ? 'regenerate' : 'normal', forceCharacter);
         const newMessages = ctx().chat.slice(beforeCount);
-        if (!newMessages.some(m => !m.is_user && !m.is_system && String(m.mes || '').trim())) {
-          throw new Error('这次没有生成回复。');
+        if (!branchHasReply(newMessages)) {
+          throw new Error(newMessages.some(branchBacklogNotice)
+            ? '柏宝书拦截了本次生成，请先在柏宝书中补齐摘要。这次没有生成新回复，原分支仍保留。'
+            : '这次没有生成回复。');
         }
         branchGraph();
         await branchSave(session);
         if (typeof decorateMessages === 'function') decorateMessages();
       } catch (err) {
-        if (!user && branchSession() === session && ctx().chat.length <= beforeCount + 1 &&
-          !ctx().chat.slice(beforeCount).some(m => String(m.mes || '').trim())) {
+        if (!user && branchSession() === session && !branchHasReply(ctx().chat.slice(beforeCount))) {
           const after = branchGraph();
           const oldPath = branchPath(after, graph.activeLeafId, branchStore().preferred);
-          const empty = new Set(after.nodes.filter(n => n.active && n.index >= beforeCount).map(n => n.id));
+          // Keep an extension's notice in the parked path, but do not replace
+          // the original reply with it. Only discard empty generation shells.
+          const empty = new Set(after.nodes.filter(n => n.active && n.index >= beforeCount && !String(n.message.mes || '').trim()).map(n => n.id));
           await branchCommit(session, () => branchApply(ctx(), after, oldPath, empty));
         }
         throw err;
