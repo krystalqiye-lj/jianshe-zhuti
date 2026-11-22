@@ -1607,6 +1607,14 @@ export function releaseThemeSettings() {
   function branchVariants(index, graph = branchGraph()) {
     const node = graph.activeAt?.get(index);
     if (!node) return { ids:[], current:null };
+    // Opening arrows belong to the native greeting family in this chat.
+    // Archived edits remain in the tree, but are not extra greeting choices.
+    if (index === 0 && !node.message.is_user && !node.message.is_system) {
+      const count = node.message.swipes?.length || 1;
+      const family = (node.message[branchTag] || []).slice(0, count);
+      const ids = family.map(stamp => stamp.id).filter(id => graph.byId.has(id));
+      return {ids:ids.includes(node.id) ? ids : [node.id], current:node.id};
+    }
     return {ids:graph.children.get(node.parentId).map(v => v.id), current:node.id};
   }
 
