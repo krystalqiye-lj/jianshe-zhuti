@@ -279,3 +279,39 @@ test('deleting a user turn removes both reply subtrees but keeps an alternate us
   assert.deepEqual(f.names(),['开场','另一个问题','新回答2']);
   assert.equal(f.branchGraph().nodes.length,3);
 });
+
+
+test('opening arrows exclude archived greeting revisions while retaining the full history tree', async () => {
+  const first={...bot('开场A新版'),swipes:['开场A新版','开场B','开场C'],swipe_id:0};
+  const a=fixture([first]);
+  const original=a.branchGraph(), formal=[...a.branchVariants(0,original).ids];
+  const store=a.state.chatMetadata[key].branches;
+  store.parked.push(
+    {id:'old-opening-a',serial:-2,parentId:null,index:0,message:bot('开场A旧版')},
+    {id:'old-opening-c',serial:-1,parentId:null,index:0,message:bot('开场C旧版')},
+    {id:'old-history-user',serial:100,parentId:'old-opening-a',index:1,message:user('保留旧剧情')}
+  );
+  let graph=a.branchGraph();
+  assert.equal(graph.nodes.filter(n=>n.parentId===null).length,5);
+  assert.deepEqual([...a.branchVariants(0,graph).ids],formal);
+  assert.equal(graph.children.get('old-opening-a')[0].message.mes,'保留旧剧情');
+  await a.branchSwitch(formal[1]);
+  assert.equal(a.state.chat[0].mes,'开场B');
+  assert.equal(a.branchVariants(0).ids.length,3);
+  assert(a.branchGraph().byId.has('old-opening-a'));
+  assert(a.branchGraph().byId.has('old-history-user'));
+  a.reload();assert.equal(a.branchVariants(0).ids.length,3);
+  await a.branchSwitch(formal[2]);assert.equal(a.state.chat[0].mes,'开场C');
+  await a.branchSwitch(formal[0]);assert.equal(a.state.chat[0].mes,'开场A新版');
+  assert.equal(a.branchVariants(0).ids.length,3);
+});
+
+test('opening family keeps intentionally identical greeting slots and excludes system/user first rows', () => {
+  const a=fixture([{...bot('同文'),swipes:['同文','同文','开场C'],swipe_id:1}]);
+  assert.equal(a.branchVariants(0).ids.length,3);
+  assert.equal(a.branchVariants(0).current,a.branchVariants(0).ids[1]);
+  for(const first of [user('第一条玩家消息'),{...bot('系统消息'),is_system:true}]){
+    const b=fixture([first]);b.branchGraph();b.state.chatMetadata[key].branches.parked.push({id:'extra',serial:30,parentId:null,index:0,message:{...first,mes:'另一个分支'}});
+    assert.equal(b.branchVariants(0).ids.length,2);
+  }
+});
