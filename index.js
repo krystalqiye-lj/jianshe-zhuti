@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-    const VERSION = '0.4.28';
+    const VERSION = '0.4.30';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -105,7 +105,10 @@ export function releaseThemeSettings() {
   async function loadChatFile(file){
     if(openingStory || chatWriteDepth || branchBusy)throw Error('当前聊天正在保存，请稍后再切换存档。');
     chatLoadDepth++;
-    try{return await ctx().openCharacterChat(chatFile(file));}
+    try{
+      preserveLocalCharacterAppearance(selected());
+      return await ctx().openCharacterChat(chatFile(file));
+    }
     finally{chatLoadDepth--;}
   }
   function chatBodiesMatch(saved,live,context=ctx(),preview=false){
@@ -212,7 +215,12 @@ export function releaseThemeSettings() {
         for(const el of chat.children)if(el.matches('.mes'))entrySizes.observe(el);
       }
       entryLast=last;
-      if(bottomGap(chat)>1)chat.scrollTop=chat.scrollHeight;
+      // VRS secondary openings intentionally begin with prose, without a theatre.
+      // Limit the top-entry preference to their untouched one-message previews.
+      const vrsProseOpening=selected()?.avatar==='VRS 5＋1.png' && count===1 &&
+        /<!--\s*vrs-opening:(?:kwon|heye|asai|cui|chi)-solo-2\s*-->/.test(ctx().chat[0]?.mes||'');
+      if(vrsProseOpening){if(chat.scrollTop>1)chat.scrollTop=0;}
+      else if(bottomGap(chat)>1)chat.scrollTop=chat.scrollHeight;
     });
   }
   function resumeChatReading(scope){
@@ -843,7 +851,15 @@ export function releaseThemeSettings() {
     };
     if(workspaceTab==='群聊与管理')return `<div class="lj-row lj-wrap" style="margin-bottom:20px"><button class="lj-primary" data-action="create-group">创建群聊</button><button class="lj-soft" data-action="import-char">导入角色</button><button class="lj-soft" data-action="character-actions">更多角色操作</button></div>`+mirrorGroup($('#rm_group_chats_block'),{showAll:true});
     const c=selected(),fields=(maps[workspaceTab]||maps['基础资料']).map(id=>D.getElementById(id)).filter(Boolean);
-    return `<section class="lj-creator-hero">${c?`<img src="${escapeHtml(avatar(c))}" alt="角色封面">`:''}<div><h2>${escapeHtml(ctx().menuType==='create'?'创建新角色':c?.name||'角色资料')}</h2><p class="lj-muted">设定、开场与专属规则</p><div class="lj-row lj-wrap"><button class="lj-soft" data-action="source-action" data-source="${fieldId($('#avatar_load')||$('#add_avatar_button')||$('#character_import_file'))}">更换角色图</button><button class="lj-soft" data-action="greetings">开场故事</button><button class="lj-soft" data-action="world-binding">绑定世界书</button></div></div></section><section class="lj-form-section"><div class="lj-form-grid">${fields.map(mirrorField).join('')}</div><div class="lj-form-actions"><button class="lj-primary" data-action="save-character">保存角色</button></div></section>`;
+    return `<section class="lj-creator-hero">${c?`<img src="${escapeHtml(avatar(c))}" alt="角色封面">`:''}<div><h2>${escapeHtml(ctx().menuType==='create'?'创建新角色':c?.name||'角色资料')}</h2><p class="lj-muted">设定、开场与专属规则</p><div class="lj-row lj-wrap"><button class="lj-soft" data-action="source-action" data-source="${fieldId($('#avatar_load')||$('#add_avatar_button')||$('#character_import_file'))}">更换角色图</button><button class="lj-soft" data-action="greetings">开场故事</button><button class="lj-soft" data-action="world-binding">绑定世界书</button></div></div></section>${(!workspaceTab || workspaceTab==='基础资料')?characterBannerField(c):''}<section class="lj-form-section"><div class="lj-form-grid">${fields.map(mirrorField).join('')}</div><div class="lj-form-actions"><button class="lj-primary" data-action="save-character">保存角色</button>${c && ctx().menuType!=='create'?`<button type="button" class="lj-soft lj-character-delete" data-action="delete-character" data-avatar="${escapeHtml(c.avatar)}">删除角色</button>`:''}</div></section>`;
+  }
+  function requestCharacterDelete(avatar) {
+    const c=selected();
+    if(!c || ctx().menuType==='create' || c.avatar!==avatar)throw Error('角色已切换，请重新打开角色管理后再操作。');
+    const button=D.querySelector('#delete_button:not(option)');
+    if(!button)throw Error('未找到酒馆的删除角色入口，请打开原角色管理。');
+    // Reuse Tavern's confirmation and its optional chat-deletion checkbox.
+    button.click();
   }
   function installedExtensions(){
     if(!extensionCatalog&&!extensionLoad)extensionLoad=loadExtensionCatalog();
@@ -883,7 +899,7 @@ export function releaseThemeSettings() {
     if(workspaceKey==='characters')return characterWorkspace();
     if(workspaceKey==='users'&&workspaceTab!=='全部选项'){
       const scope=workspaceTab==='聊天行为'?container.querySelector('[name="ChatMessageHandlingToggles"]'):workspaceTab==='主题与字体'?$('#UI-Theme-Block'):container.querySelector('[name="AvatarAndChatDisplay"]')?.parentElement;
-      return `<section class="lj-form-section">${mirrorGroup(scope)}</section>`;
+      return `${(!workspaceTab || workspaceTab==='阅读显示')?chatAppearanceControls():''}<section class="lj-form-section">${mirrorGroup(scope)}</section>`;
     }
     if(workspaceKey==='format'&&workspaceTab!=='全部选项'){
       const scope=workspaceTab==='上下文模板'?$('#ContextSettings'):workspaceTab==='指令模板'?$('#InstructSettingsColumn'):($('#ReasoningSettings')||$('#reasoning_auto_parse')?.closest('div:has(>h4 [data-i18n="Reasoning"])'));
@@ -1338,6 +1354,8 @@ export function releaseThemeSettings() {
     portal.querySelector('.lj-modal-backdrop')?.remove();
     if(started){
       await saveChatSafely();
+      assertChatIdentity(identity);
+      preserveLocalCharacterAppearance(selected());
       await initial.executeSlashCommandsWithOptions('/newchat');
       if(selected()?.avatar!==avatar || branchSession()===identity.scope || !ctx().chat.length || hasArchiveConversation(ctx().chat,ctx().chatMetadata))
         throw Error('酒馆未能建立新的预览，已停止切换开场白以保留旧存档。');
@@ -2271,6 +2289,7 @@ export function releaseThemeSettings() {
   function decorateMessages() {
     clearStaleMessageControls();
     if (disposed || route!=='chat' || !D.body.matches('.lj-chat.lj-active')) return;
+    syncThinkingLabels();
     const chat = ctx().chat;
     if (!chat.length) return;
     const graph = branchGraph();
@@ -2476,6 +2495,11 @@ export function releaseThemeSettings() {
   function runNativeMessageTool(index, tool) {
     const row=messageRow(index);
     if(!tool || !row?.contains(tool.source)) return;
+    if(tool.key==='mes_prompt') {
+      // SillyTavern delegates prompt inspection to a pointerup handler.
+      tool.source.dispatchEvent(new W.Event('pointerup',{bubbles:true}));
+      return;
+    }
     if(tool.key==='mes_edit') {
       if(messageEditor && messageEditor.el.querySelector('textarea').value!==messageEditor.ref.message.mes) {
         toast('请先保存或取消正在编辑的消息'); return;
@@ -2545,6 +2569,7 @@ export function releaseThemeSettings() {
     anchor ||= messageRow(index)?.querySelector('[data-lj-msg="menu"]');
     if(!anchor) return;
     const items=[
+      ...(chatAppearance()==='mufy'?[["copy","copy","复制消息"],...(!ref.message.is_user && index>0?[["retry","retry","分支重说"]]:[])]:[]),
       ['edit','pencil','编辑对话'],['delete','trash','删除消息'],['note','note','反馈问题'],
       ['remember','memory',ref.message.extra?.[KEY]?.permanentEntry?'编辑永久记忆':'添加到永久记忆'],
       ['tokens','token','Token 统计'],
@@ -3135,7 +3160,7 @@ export function releaseThemeSettings() {
       countObserver?.disconnect();overlay.remove(); pairDialog=null;syncCardWidgets();
       toolbar?.querySelector('.lj-toolbar-preset')?.focus({preventScroll:true});
     }
-    pairDialog={scope,close};syncCardWidgets();
+    pairDialog={scope,close,layer:overlay,editing:''};syncCardWidgets();
     find('[data-pair="cancel"]').focus({preventScroll:true});
     function update() {
       const p=data.presets.find(p=>p.key===presetKey), r=data.rows.find(r=>r.ref===connectionRef);
@@ -3161,7 +3186,7 @@ export function releaseThemeSettings() {
       const visible=data.rows.filter(r=>(family==='全部'||pairFamily(r)===family)&&[r.label,r.model,r.api].join(' ').toLowerCase().includes(text));
       models.innerHTML=visible.map(r=>{
         const details=[r.model && r.model!==r.label?r.model:'',r.api==='custom'?'兼容 OpenAI':r.api,r.unavailable].filter(Boolean);
-        return `<button type="button" class="lj-pair-card" data-choice="model" data-id="${escapeHtml(r.ref)}" ${r.unavailable?'disabled':''}><strong>${escapeHtml(r.label)}</strong><small>${escapeHtml(details.join(' · '))}</small></button>`;
+        return `<div class="lj-pair-item"><button type="button" class="lj-pair-card" data-choice="model" data-id="${escapeHtml(r.ref)}" ${r.unavailable?'disabled':''}><strong>${escapeHtml(r.label)}</strong><small>${escapeHtml(details.join(' · '))}</small></button><button type="button" class="lj-pair-edit" data-pair-edit="model" data-id="${escapeHtml(r.ref)}" aria-label="编辑模型连接 ${escapeHtml(r.label)}">${icon('edit')}</button></div>`;
       }).join('') || '<p class="lj-pair-empty">没有找到匹配的连接。</p>';
       update();
     }
@@ -3192,6 +3217,17 @@ export function releaseThemeSettings() {
         return;
       }
       if(b.dataset.family){family=b.dataset.family;for(const t of find('.lj-pair-filters').children)t.setAttribute('aria-pressed',String(t===b));modelList();return;}
+      if(b.dataset.pairEdit){
+        const kind=b.dataset.pairEdit;
+        const row=(kind==='preset'?data.presets:data.rows).find(r=>(r.key||r.ref)===b.dataset.id);
+        if(!row)return;
+        pairDialog.editing=kind;
+        try{
+          if(kind==='preset'){beginChatTools();openBook(row.name,row.engine);}
+          else await openApiEditor(row,scope);
+        }catch(error){if(pairDialog?.scope===scope)pairDialog.editing='';toast(error.message);}
+        return;
+      }
       if(b.dataset.choice){if(b.dataset.choice==='preset')presetKey=b.dataset.id;else connectionRef=b.dataset.id;update();return;}
       if(b===ok){
         const p=data.presets.find(p=>p.key===presetKey),r=data.rows.find(r=>r.ref===connectionRef);
@@ -3201,16 +3237,24 @@ export function releaseThemeSettings() {
         finally {busy=false;overlay.removeAttribute('aria-busy');}
       }
     });
-    try {
+    async function readCatalog(initial=false) {
+      const positions=[presets.scrollTop,presets.scrollLeft,models.scrollTop,models.scrollLeft];
       await pairQueue;
-      data=await pairCatalog();
-      if(!overlay.isConnected || scope!==pairScope())return;
-      const choice=savedPair(), boundRow=choice?data.rows.find(r=>r.ref===choice.connection):null;
-      let restored;
-      if(choice){try{restored=pairTarget(choice);}catch{}}
-      connectionRef=choice?(boundRow?.ref || restored?.ref || ''):(data.current || '');
-      presetKey=JSON.stringify([choice?.engine || pairManager(data.active.api), choice?.preset || currentPreset()]);
-      presets.innerHTML=data.presets.map(p=>`<button type="button" class="lj-pair-card" data-choice="preset" data-id="${escapeHtml(p.key)}" data-search="${escapeHtml([p.title,p.name].join(' ').toLowerCase())}"><strong>${escapeHtml(p.title||p.name)}</strong><span class="lj-pair-tokens" hidden></span>${presetSummary(p)}</button>`).join('');
+      const fresh=await pairCatalog();
+      if(!overlay.isConnected || scope!==pairScope()){if(scope!==pairScope())close(true);return;}
+      data=fresh;
+      if(initial){
+        const choice=savedPair(), boundRow=choice?data.rows.find(r=>r.ref===choice.connection):null;
+        let restored;
+        if(choice){try{restored=pairTarget(choice);}catch{}}
+        connectionRef=choice?(boundRow?.ref || restored?.ref || ''):(data.current || '');
+        presetKey=JSON.stringify([choice?.engine || pairManager(data.active.api), choice?.preset || currentPreset()]);
+      }else{
+        if(!data.presets.some(p=>p.key===presetKey))presetKey='';
+        if(!data.rows.some(r=>r.ref===connectionRef))connectionRef='';
+      }
+      countObserver?.disconnect();
+      presets.innerHTML=data.presets.map(p=>`<div class="lj-pair-item" data-id="${escapeHtml(p.key)}" data-search="${escapeHtml([p.title,p.name].join(' ').toLowerCase())}"><button type="button" class="lj-pair-card" data-choice="preset" data-id="${escapeHtml(p.key)}"><strong>${escapeHtml(p.title||p.name)}</strong><span class="lj-pair-tokens" hidden></span>${presetSummary(p)}</button><button type="button" class="lj-pair-edit" data-pair-edit="preset" data-id="${escapeHtml(p.key)}" aria-label="编辑预设 ${escapeHtml(p.title||p.name)}">${icon('edit')}</button></div>`).join('');
       if(W.IntersectionObserver){
         let counts=Promise.resolve();
         countObserver=new W.IntersectionObserver(entries=>{
@@ -3235,12 +3279,23 @@ export function releaseThemeSettings() {
       find('.lj-pair-filters').innerHTML=families.map(f=>`<button type="button" data-family="${f}" aria-pressed="${f===family}">${f}</button>`).join('');
       modelList();
       const selectedCard=presets.querySelector('[aria-pressed=true]');
-      if(selectedCard){
+      if(initial && selectedCard){
         if(W.matchMedia('(max-width:767px)').matches)presets.scrollLeft+=selectedCard.getBoundingClientRect().left-presets.getBoundingClientRect().left;
         else presets.scrollTop+=selectedCard.getBoundingClientRect().top-presets.getBoundingClientRect().top;
       }
+      if(!initial){
+        presets.scrollTop=positions[0];presets.scrollLeft=positions[1];
+        models.scrollTop=positions[2];models.scrollLeft=positions[3];
+      }
       if(!data.rows.length || !data.presets.length)summary.textContent='请先在预设库或模型连接中添加可用配置。';
-    } catch(error) {if(overlay.isConnected)summary.textContent='无法读取配置。'+error.message;}
+    }
+    overlay.addEventListener('lj-resume',()=>{
+      if(pairDialog?.scope!==scope)return;
+      pairDialog.editing='';
+      void readCatalog().catch(error=>{summary.textContent='无法刷新配置。'+error.message;});
+    });
+    try {await readCatalog(true);}
+    catch(error) {if(overlay.isConnected)summary.textContent='无法读取配置。'+error.message;}
   }
 
     async function removePairConnection(row) {
@@ -3436,12 +3491,13 @@ export function releaseThemeSettings() {
     }
     if(!String(result?.content||result?.reasoning||'').trim())throw Error('已收到服务商响应，但回复为空。');
   }
-  async function openApiEditor(row){
+  async function openApiEditor(row,fromScope){
     const original=row?profileManager().profiles.find(p=>'profile:'+p.id===row.ref):null;
     if(row && !original)throw Error('这条连接已经被删除。');
     let snapshot=original?JSON.parse(JSON.stringify(original)):null;
     const providers=[...new Set(['custom',...Object.keys(ctx().CONNECT_API_MAP||{}).map(pairApi)])].filter(p=>ctx().CONNECT_API_MAP[p]);
     const state=await post('/api/secrets/read',{});
+    if(fromScope && (pairScope()!==fromScope || pairDialog?.scope!==fromScope))return;
     const layer=modal(row?'编辑 API':'新增 API',`<form class="lj-api-form">
       <label>连接名称<input name="label" required autocomplete="off"></label>
       <label>服务商或接口协议<select name="provider"></select></label>
@@ -3793,15 +3849,15 @@ export function releaseThemeSettings() {
       return `<button type="button" class="lj-book-card" data-action="book-open" data-name="${escapeHtml(key)}"><div class="lj-book-cover">${cover?`<img src="${escapeHtml(cover)}" alt="">`:icon('book')}</div><div class="lj-book-copy"><h3>${escapeHtml(bookTitle(p,key))}</h3>${info.description?`<p>${escapeHtml(info.description)}</p>`:''}<small data-book-count="${escapeHtml(key)}">统计 Token 中…</small></div></button>`;
     }).join('')||'<p>暂无匹配的预设</p>'}</div>`;
   }
-  function openBook(key){
-    const source=key?bookSource(key):null;
+  function openBook(key,engine='openai'){
+    const source=key?bookSource(key,engine):null;
     if(key&&!source)throw Error('找不到这份预设。');
-    const fallback=bookSource('Default')||{};
+    const fallback=bookSource('Default',engine)||{};
     const blank={prompts:bookCopy((fallback.prompts||[]).filter(x=>x.marker)),prompt_order:[]};
     if(!source)for(const x of blank.prompts)bookSwitch(blank,x.identifier,true);
     const draft=bookCopy(source?bookBase(source):blank);
     draft.lj_preset_info={...bookInfo(draft),title:bookTitle(draft,key||''),description:bookInfo(draft).description||''};
-    book={key,source:source&&bookCopy(source),draft,selection:new Set(),expanded:'',history:false,saving:false,version:0};
+    book={key,engine,pairOrigin:pairDialog?.editing==='preset',initial:JSON.stringify(draft),source:source&&bookCopy(source),draft,selection:new Set(),expanded:'',history:false,saving:false,version:0};
     navigate('preset-editor');
   }
   const bookParameters={openai_max_context:'上下文长度',openai_max_tokens:'最大回复 Token',temperature:'温度',top_p:'Top P（累计概率范围）',top_k:'Top K（候选词数量）',frequency_penalty:'频率惩罚',presence_penalty:'存在惩罚'};
@@ -3810,7 +3866,7 @@ export function releaseThemeSettings() {
     const p=book.draft,info=bookInfo(p),ro=book.history,dis=ro?'disabled':'',view=bookRows(p),sel=book.selection,btn=(a,text,extra='')=>`<button type="button" class="lj-soft" data-action="book-${a}" ${extra}>${text}</button>`;
     const header=ro?`<select id="lj-book-version" aria-label="历史版本">${[book.source,...(book.source?.lj_preset_history||[])].map((x,i)=>`<option value="${i}" ${i===book.version?'selected':''}>${escapeHtml(i?bookDate(x.at):'当前版本 · '+bookDate(bookInfo(x).updated))}</option>`).join('')}</select>`: `<h1>${book.key?'编辑预设':'创建预设'}</h1>`;
     fillBookCounts();
-    return `<div class="lj-book-editor"><header class="lj-book-top"><button class="lj-iconbutton" data-action="book-back" aria-label="返回">${icon('back')}</button>${header}<div class="lj-book-tools">${!ro&&book.key?btn('history','查看历史版本'):''}${btn('back','取消')}<button class="lj-primary" data-action="book-${ro?'restore':'save'}" ${book.saving || (ro&&!book.version)?'disabled':''}>${ro?'还原此版本':'确认'}</button></div></header>
+    return `<div class="lj-book-editor"><header class="lj-book-top"><button class="lj-iconbutton" data-action="book-${book.pairOrigin?'picker-close':'back'}" aria-label="${book.pairOrigin?'关闭编辑并返回预设与模型选择':'返回'}">${icon(book.pairOrigin?'close':'back')}</button>${header}<div class="lj-book-tools">${!ro&&book.key?btn('history','查看历史版本'):''}${book.pairOrigin?(ro?btn('back','返回编辑'):''):btn('back','取消')}<button class="lj-primary" data-action="book-${ro?'restore':'save'}" ${book.saving || (ro&&!book.version)?'disabled':''}>${ro?'还原此版本':'确认'}</button></div></header>
       <div class="lj-book-form"><h3>预设封面</h3><button class="lj-book-upload" data-action="book-cover" ${dis}>${bookCover(info.cover)?`<img src="${escapeHtml(info.cover)}" alt="预设封面">`:'上传图片'}</button>
       <label>预设名称<input data-book-field="title" value="${escapeHtml(info.title)}" ${dis}></label><label>描述<textarea data-book-field="description" rows="3" ${dis}>${escapeHtml(info.description)}</textarea></label>
       ${ro?'':`<div class="lj-book-actions">${btn('import','导入预设')}${btn('download','下载预设')}${book.key?btn('delete-file','删除这份预设'):''}</div>`}
@@ -3836,12 +3892,13 @@ export function releaseThemeSettings() {
     const b=book;if(!b || b.saving)return;
     const p=bookCopy(b.draft),info=p.lj_preset_info,title=String(info?.title||'').trim();
     if(!title)throw Error('请填写预设名称。');
-    const manager=ctx().getPresetManager('openai'),list=manager.getPresetList();
-    const duplicate=Object.keys(list.preset_names).some(key=>key!==b.key && (key===title || bookTitle(bookSource(key),key)===title));
+    const engine=b.engine||'openai',manager=ctx().getPresetManager(engine),list=manager.getPresetList();
+    const names=Array.isArray(list.preset_names)?list.preset_names:Object.keys(list.preset_names);
+    const duplicate=names.some(key=>key!==b.key && (key===title || bookTitle(bookSource(key,engine),key)===title));
     if(duplicate)throw Error('已有同名预设，请换一个名字。');
-    if(b.source && JSON.stringify(bookSource(b.key))!==JSON.stringify(b.source))throw Error('这份预设已更新，请重新打开。');
+    if(b.source && JSON.stringify(bookSource(b.key,b.engine))!==JSON.stringify(b.source))throw Error('这份预设已更新，请重新打开。');
     const key=b.key||title.replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').trim();
-    if(!key||(!b.key&&(/[. ]$/.test(key)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(key)))||key==='.'||key==='..'||['__proto__','constructor','prototype'].includes(key)||(!b.key&&bookSource(key)))throw Error('这个预设名称不可用。');
+    if(!key||(!b.key&&(/[. ]$/.test(key)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(key)))||key==='.'||key==='..'||['__proto__','constructor','prototype'].includes(key)||(!b.key&&bookSource(key,b.engine)))throw Error('这个预设名称不可用。');
     b.saving=true;
     try{
       info.title=title;info.updated=Date.now();info.created ||= info.updated;
@@ -3849,13 +3906,15 @@ export function releaseThemeSettings() {
       const previous=b.source && bookBase(b.source);
       if(previous)p.lj_preset_history=[{at:bookInfo(previous).updated || Date.now(),...bookDiff(previous,p)},...history];
       await manager.savePreset(key,p,{skipUpdate:true});
-      let i=list.preset_names[key];
-      if(i===undefined){i=list.presets.length;list.preset_names[key]=i;const option=D.createElement('option');option.value=String(i);option.textContent=key;D.getElementById('settings_preset_openai')?.append(option);}
+      let i=Array.isArray(list.preset_names)?list.preset_names.indexOf(key):list.preset_names[key];
+      if(i===undefined || i===-1){i=list.presets.length;if(Array.isArray(list.preset_names))list.preset_names.push(key);else list.preset_names[key]=i;const option=D.createElement('option');option.value=String(i);option.textContent=key;D.getElementById('settings_preset_openai')?.append(option);}
       list.presets[i]=p;
       if(manager.getSelectedPresetName()===key){
         const connection=await activePairConnection(),type=ctx().eventTypes.OAI_PRESET_CHANGED_BEFORE,c=ctx();
         const preserve=({preset,presetName,settingsToUpdate})=>{if(presetName===key)for(const [field,spec] of Object.entries(settingsToUpdate))if(spec[3])delete preset[field];};
-        c.eventSource.on(type,preserve);try{await manager.selectPreset(String(i));}finally{c.eventSource.removeListener(type,preserve);}
+        if(engine==='openai' && type)c.eventSource.on(type,preserve);
+        try{await manager.selectPreset(manager.findPreset?.(key)??String(i));}
+        finally{if(engine==='openai' && type)c.eventSource.removeListener(type,preserve);}
         if(!pairMatches(connection,await activePairConnection()))await applyPairConnection(connection);
       }
       book=null;await backPage();toast('预设已保存');
@@ -3888,10 +3947,15 @@ export function releaseThemeSettings() {
   async function bookAction(action,el){
     if(action==='create'||action==='open'){openBook(el.dataset.name||'');return;}
     const b=book;if(!b || b.saving)return;
+    if(action==='picker-close'){
+      const draft=b.history?b.beforeHistory:b.draft;
+      if(JSON.stringify(draft)!==b.initial && !W.confirm('预设还有未保存的修改。放弃修改并返回选择器吗？'))return;
+      book=null;await backPage();return;
+    }
     if(action==='delete-file'&&!b.history&&b.key){
       if(!W.confirm('删除「'+bookTitle(b.draft,b.key)+'」及其历史版本？使用它的存档需要重新选择预设。'))return;
       b.saving=true;
-      try{await pairWork(()=>removePairPreset({name:b.key,engine:'openai'}));await backPage();toast('已删除这份预设');}
+      try{await pairWork(()=>removePairPreset({name:b.key,engine:b.engine||'openai'}));await backPage();toast('已删除这份预设');}
       finally{b.saving=false;}
       return;
     }
@@ -4309,7 +4373,7 @@ export function releaseThemeSettings() {
   function preferences() {
     const context = ctx();
     if (!context) return {};
-    const defaults = {version:VERSION, enabled:false, lastChats:{}, pinned:[], backgrounds:{}, notes:{}, stats:{}, greetingNames:{}, originalThemes:null};
+    const defaults = {chatAppearance:'lumeow', version:VERSION, enabled:false, lastChats:{}, pinned:[], backgrounds:{}, notes:{}, stats:{}, greetingNames:{}, originalThemes:null};
     context.extensionSettings[KEY] ||= defaults;
     const value = context.extensionSettings[KEY];
     for (const [key, initial] of Object.entries(defaults)) if (value[key] === undefined) value[key] = initial;
@@ -4487,18 +4551,289 @@ export function releaseThemeSettings() {
     return title('使用统计','<button class="lj-soft" data-action="refresh-stats">刷新统计</button>')+`<div class="lj-stat-grid"><div class="lj-stat"><strong>${characterEntries().length}</strong>角色</div><div class="lj-stat"><strong>${stats.reduce((n,x)=>n+(x.rounds||0),0)}</strong>已统计聊天轮数</div><div class="lj-stat"><strong>${stats.reduce((n,x)=>n+(x.chats||0),0)}</strong>已统计存档</div></div><p class="lj-muted">一组用户消息和 AI 回复算一轮。开场白和重说版本不额外增加轮数，各存档分别统计后合计。</p><p class="lj-muted">点角色回复下的更多按钮可查看这条消息的用量。实际费用以模型服务商的账单为准。</p><button class="lj-soft" data-action="route" data-page="presets">查看我的预设</button>`;
   }
   function currentPreset() { return ctx().getPresetManager?.()?.getSelectedPresetName?.() || '选择预设'; }
+  function chatAppearance() { return preferences().chatAppearance==='mufy'?'mufy':'lumeow'; }
+  const characterBannerKey='jianshe_theme';
+  let localCharacterAppearances = new Map();
+  const characterBannerDrafts=new Map();
+  const characterBannerStyleDrafts=new Map();
+  let closedBannerScope='';
+  function characterBannerText(c) { return typeof c?.data?.extensions?.[characterBannerKey]?.chat_banner==='string'?c.data.extensions[characterBannerKey].chat_banner:''; }
+  function normalizeBannerStyle(value={}) {
+    const color=(v,fallback)=>typeof v==='string' && /^#[0-9a-f]{6}$/i.test(v)?v:fallback;
+    const image=typeof value.image==='string'?value.image.trim():'';
+    return {color:color(value.color,'#ded3f6'),background:color(value.background,'#211d2c'),border:color(value.border,'#635077'),radius:Math.max(0,Math.min(40,Number(value.radius)||0)),image:/^(https?:\/\/|\/backgrounds\/|data:image\/(?:png|jpeg|webp|gif);base64,)/i.test(image)?image:'',css:typeof value.css==='string'?value.css.slice(0,20000):''};
+  }
+  function characterBannerStyle(c) { return normalizeBannerStyle({radius:10,...c?.data?.extensions?.[characterBannerKey]?.chat_banner_style}); }
+  function generationWaitColors(value={}) {
+    const color=(key,fallback)=>typeof value?.[key]==='string' && /^#[0-9a-f]{6}$/i.test(value[key])?value[key]:fallback;
+    const palette = {color: color('color', '#F5F5F5'), shadow: color('shadow', '#DCDCDC'), hover: color('hover', '#B0C4DE')};
+    const border = color('border', ''), background = color('background', '');
+    if (border && background) Object.assign(palette, {border, background});
+    return palette;
+  }
+  function mergeLocalCharacterAppearance(avatar, stored = {}) {
+    const local = localCharacterAppearances.get(avatar);
+    const current = stored ?? {};
+    if (!local) return current;
+    const result = {...local, ...current};
+    if (local.chat_banner_openings) {
+      result.chat_banner_openings = {...current.chat_banner_openings, ...local.chat_banner_openings};
+    }
+    return result;
+  }
+  function preserveLocalCharacterAppearance(character) {
+    if (!localCharacterAppearances.has(character?.avatar)) return;
+    const merge = card => {
+      card.data ??= {};
+      card.data.extensions ??= {};
+      card.data.extensions[characterBannerKey] = mergeLocalCharacterAppearance(
+        character.avatar, card.data.extensions[characterBannerKey]);
+      return card;
+    };
+    const rewrite = raw => raw ? JSON.stringify(merge(JSON.parse(raw))) : raw;
+    // Native new-chat and archive operations save the role from the editor form.
+    const field = $('#avatar_url_pole')?.value === character.avatar ? $('#character_json_data') : null;
+    const previous = character.json_data;
+    const next = rewrite(previous);
+    const nextField = field?.value === previous ? next : rewrite(field?.value);
+    merge(character);
+    if (next) character.json_data = next;
+    if (field && nextField) field.value = nextField;
+  }
+  function activeCharacterBanner(c) {
+    const context=ctx(), first=context?.chat?.[0];
+    const sameRole=context?.characters?.[context.characterId]?.avatar===c?.avatar;
+    const index=sameRole && !first?.is_user && (!first || isStoryMessageForDisplay(first))
+      ? (Number.isInteger(first?.swipe_id)?first.swipe_id:context?.chatMetadata?.[KEY]?.storyIndex) : undefined;
+    const theme = mergeLocalCharacterAppearance(c?.avatar, c?.data?.extensions?.[characterBannerKey]);
+    const override = index !== undefined ? theme?.chat_banner_openings?.[index] : undefined;
+    const heading = override?.reply_heading ?? theme?.reply_heading;
+    return {
+      replyStyle: generationWaitColors(override?.reply_heading_style ?? theme?.reply_heading_style),
+      replyHeading: typeof heading === 'string' ? heading : '',
+      text: typeof override?.text === 'string' ? override.text : (typeof theme.chat_banner === 'string' ? theme.chat_banner : ''),
+      style: normalizeBannerStyle({radius: 10, ...theme.chat_banner_style, ...override?.style}),
+    };
+  }
+  function characterBannerField(c) {
+    if(!c || ctx().menuType==='create')return '';
+    const text=characterBannerDrafts.has(c.avatar)?characterBannerDrafts.get(c.avatar):characterBannerText(c);
+    const style=characterBannerStyleDrafts.get(c.avatar)||characterBannerStyle(c),avatar=escapeHtml(c.avatar);
+    return `<section class="lj-form-section lj-banner-editor" data-banner-owner="${avatar}"><label for="lj-character-banner">聊天横幅文字</label><textarea id="lj-character-banner" data-banner-avatar="${avatar}" maxlength="280" rows="2" placeholder="填写只属于这个角色的一句话">${escapeHtml(text)}</textarea><p class="lj-muted lj-small">填写后点下方的保存角色。横幅默认显示，可以点 × 关闭。仅在 Mufy 聊天页面展示，不发送给模型。Lumeow 不显示横幅。留空时聊天不显示横幅。</p><details><summary>这个角色的横幅美化</summary><div class="lj-banner-style-fields">${[['color','文字颜色'],['background','底色'],['border','边框颜色']].map(([key,label])=>`<label>${label}<input type="color" data-banner-style="${key}" value="${style[key]}"></label>`).join('')}<label>圆角大小<input type="range" min="0" max="40" data-banner-style="radius" value="${style.radius}"></label></div><label>横幅背景图地址（选填）<input type="url" data-banner-style="image" value="${escapeHtml(style.image)}" placeholder="粘贴图片的 http 或 https 地址"></label><details><summary>高级美化代码 CSS（样式表）</summary><p class="lj-muted lj-small">可以粘贴作者提供的横幅样式。用 .banner 设置外框，.banner-text 设置文字，.banner-close 设置关闭按钮。代码只在这条横幅里生效。</p><textarea data-banner-style="css" rows="6" maxlength="20000" placeholder=".banner { border-radius: 24px; }">${escapeHtml(style.css)}</textarea></details></details><p class="lj-muted lj-small">效果预览</p><div class="lj-banner-preview" data-banner-preview="${avatar}"></div></section>`;
+  }
+  function paintCharacterBanner(host,c,text,style,closable=true) {
+    const shadow=host.shadowRoot||host.attachShadow({mode:'open'});
+    if(!shadow.querySelector('.banner')){
+      shadow.innerHTML='<style></style><div class="banner"><span class="banner-text"></span><button type="button" class="banner-close" aria-label="关闭当前横幅" title="关闭当前横幅">×</button></div>';
+      shadow.querySelector('button').addEventListener('click',closeCharacterBanner);
+    }
+    const css=`:host{display:block;font:inherit;color:inherit}.banner{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;max-height:130px;padding:8px 8px 8px 14px;border:1px solid var(--banner-border);border-radius:var(--banner-radius);background-color:var(--banner-background);background-image:var(--banner-image);background-size:cover;background-position:center;color:var(--banner-color);font:inherit;font-size:13px;line-height:1.55;box-sizing:border-box}.banner-text{min-width:0;flex:1;white-space:pre-wrap;overflow-wrap:anywhere;max-height:106px;overflow:auto}.banner-close{display:grid;place-items:center;flex:none;align-self:flex-start;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:24px;cursor:pointer}.banner-close:hover{background:#ffffff14}.banner-close:focus-visible{outline:2px solid currentColor;outline-offset:-2px}.banner-close[hidden]{display:none}${style.css}`;
+    if(shadow.querySelector('style').textContent!==css)shadow.querySelector('style').textContent=css;
+    host.style.setProperty('--banner-color',style.color);host.style.setProperty('--banner-background',style.background);host.style.setProperty('--banner-border',style.border);host.style.setProperty('--banner-radius',style.radius+'px');host.style.setProperty('--banner-image',style.image?'url('+JSON.stringify(style.image)+')':'none');
+    shadow.querySelector('.banner-text').textContent=text.trim();
+    shadow.querySelector('button').hidden=!closable;
+  }
+  function previewCharacterBanner() {
+    const c=selected(),host=root?.querySelector('[data-banner-preview]');
+    if(!c || host?.dataset.bannerPreview!==c.avatar)return;
+    const text = characterBannerDrafts.get(c.avatar) ?? characterBannerText(c);
+    host.hidden = !text.trim();
+    if (!host.hidden) {
+      paintCharacterBanner(host,c,text,normalizeBannerStyle(characterBannerStyleDrafts.get(c.avatar)||characterBannerStyle(c)),false);
+    }
+  }
+  async function saveCharacterBanner() {
+    const c=selected(),avatar=c?.avatar;
+    if(!avatar || (!characterBannerDrafts.has(avatar) && !characterBannerStyleDrafts.has(avatar)))return;
+    const text=(characterBannerDrafts.get(avatar)??characterBannerText(c)).trim();
+    const style=normalizeBannerStyle(characterBannerStyleDrafts.get(avatar)||characterBannerStyle(c));
+    if(text.length>280)throw Error('聊天横幅最多填写 280 个字。');
+    const data={chat_banner:text,chat_banner_style:style};
+    await post('/api/characters/merge-attributes',{avatar,data:{extensions:{[characterBannerKey]:data}}},'text');
+    const saved=await post('/api/characters/get',{avatar_url:avatar});
+    if(characterBannerText(saved)!==text || JSON.stringify(characterBannerStyle(saved))!==JSON.stringify(style))throw Error('没有确认横幅已保存，请重试。');
+    const live=ctx().characters.find(x=>x?.avatar===avatar);
+    if(live){
+      live.data||={};live.data.extensions||={};live.data.extensions[characterBannerKey]={...(live.data.extensions[characterBannerKey]||{}),...data};
+      if(live.json_data){
+        const json=JSON.parse(live.json_data);json.data||={};json.data.extensions||={};json.data.extensions[characterBannerKey]={...(json.data.extensions[characterBannerKey]||{}),...data};
+        live.json_data=JSON.stringify(json);
+        if(selected()?.avatar===avatar && $('#character_json_data'))$('#character_json_data').value=live.json_data;
+      }
+    }
+    if(characterBannerDrafts.get(avatar)?.trim()===text)characterBannerDrafts.delete(avatar);
+    if(JSON.stringify(normalizeBannerStyle(characterBannerStyleDrafts.get(avatar)||{}))===JSON.stringify(style))characterBannerStyleDrafts.delete(avatar);
+    ensureCharacterBanner();
+  }
+  function ensureCharacterBanner() {
+    const chat=$('#chat');if(!chat)return;
+    let banner=D.getElementById('lj-character-banner-bar');
+    if(route!=='chat' || chatAppearance()!=='mufy'){
+      if(chatAppearance()!=='mufy'){delete chat.dataset.ljOpeningDecor;chat.style.removeProperty('--lj-reply-heading');}
+      if(route!=='chat' && !currentToolOrigin())closedBannerScope='';
+      if(banner)banner.hidden=true;
+      return;
+    }
+    const c=selected();if(!c){if(banner)banner.hidden=true;return;}
+    const active=activeCharacterBanner(c);
+    chat.dataset.ljOpeningDecor=active.replyHeading?'versatile':'';
+    if(active.replyHeading)chat.style.setProperty('--lj-reply-heading',JSON.stringify(active.replyHeading));
+    else chat.style.removeProperty('--lj-reply-heading');
+    if (!active.text.trim()) {
+      if (banner) banner.hidden = true;
+      return;
+    }
+    if(!banner){
+      banner=D.createElement('aside');banner.id='lj-character-banner-bar';banner.setAttribute('role','note');banner.setAttribute('aria-label','角色聊天横幅');
+      chat.before(banner);
+    }
+    paintCharacterBanner(banner,c,active.text,active.style);
+    banner.hidden=closedBannerScope===pairScope();
+  }
+  function closeCharacterBanner() {
+    const chat=$('#chat'),place=chat&&readingPlace(chat);
+    closedBannerScope=pairScope();ensureCharacterBanner();
+    if(place)W.requestAnimationFrame(()=>{if(chat.isConnected)restoreReadingPlace(chat,place);});
+  }
+  function chatAppearanceControls() {
+    const chosen=chatAppearance();
+    return `<section class="lj-form-section lj-appearance-settings"><h3>聊天页面外观</h3><p class="lj-muted">只切换中间聊天区的布局。角色卡美化、存档、模型和酒馆功能继续沿用。</p><div class="lj-appearance-options" role="group" aria-label="聊天页面外观">${[['lumeow','Lumeow（原聊天样式）'],['mufy','Mufy（新聊天样式）']].map(([key,label])=>`<button type="button" class="lj-soft" data-action="chat-appearance" data-skin="${key}" aria-pressed="${chosen===key}">${label}</button>`).join('')}</div></section>`;
+  }
+  function applyChatAppearance() {
+    D.body.classList.toggle('lj-chat-mufy',chatAppearance()==='mufy' && D.body.classList.contains('lj-chat'));
+    for(const button of D.querySelectorAll('[data-action="chat-appearance"]'))button.setAttribute('aria-pressed',String(button.dataset.skin===chatAppearance()));
+    ensureCharacterBanner();
+    if(chatAppearance()!=='mufy')D.querySelector('#chat .lj-generation-wait')?.remove();
+    syncThinkingLabels();
+  }
+  function setChatAppearance(value) {
+    if(!['lumeow','mufy'].includes(value))return;
+    const chat=$('#chat'), place=chat && readingPlace(chat);
+    preferences().chatAppearance=value;persist();
+    // Keep the transcript and its embedded runtimes mounted. No saveChat, reload,
+    // printMessages, innerHTML replacement or model request belongs to a skin switch.
+    applyChatAppearance();
+    if(place)W.requestAnimationFrame(()=>{if(chat.isConnected)restoreReadingPlace(chat,place);});
+  }
+  function chatSessionMenu() {
+    beginChatTools();
+    const id=ctx().characterId;
+    modal('对话与存档',`<div class="lj-list"><button class="lj-setting-card" data-action="manage-archives" data-id="${id}"><strong>管理当前角色的存档</strong></button><button class="lj-setting-card" data-action="greetings"><strong>选择开场白，开始新对话</strong></button><button class="lj-setting-card" data-action="chat-native-options"><strong>酒馆的其他聊天操作</strong></button></div>`,'420px');
+  }
+  function syncThinkingLabels() {
+    const context=ctx(), messages=context?.chat||[], role=selected();
+    const enabled=!disposed && route==='chat' && chatAppearance()==='mufy' && role;
+    const appearance=activeCharacterBanner(role), label=appearance.replyHeading||'偷看剧本中';
+    const live=D.querySelector('#chat .lj-generation-wait');
+    let firstUser = -1, lastUser = -1;
+    for (let index = 0; index < messages.length; index++) {
+      const message = messages[index];
+      if (!message?.is_user || !isStoryMessageForDisplay(message)) continue;
+      if (firstUser < 0) firstUser = index;
+      lastUser = index;
+    }
+    for(const row of D.querySelectorAll('#chat > .mes[mesid]')) {
+      const index=Number(row.getAttribute('mesid')), message=messages[index], block=row.querySelector('.mes_block');
+      let marker=block?.querySelector(':scope > .lj-script-peek');
+      if(!enabled || !block || !isStoryMessageForDisplay(message) || message.is_user || firstUser<0 || index<=firstUser ||
+        live && index>lastUser || !String(message.mes||'').trim() && !message.extra?.reasoning) {
+        marker?.remove();row.classList.remove('lj-has-script-peek');continue;
+      }
+      if(!marker) {
+        marker=D.createElement('button');marker.type='button';
+        const icon=D.createElement('span');icon.className='lj-wait-book';icon.setAttribute('aria-hidden','true');
+        const title=D.createElement('span');title.className='lj-wait-label';marker.append(icon,title);block.prepend(marker);
+        marker.onclick=()=>{const native=row.querySelector('.mes_reasoning_details');if(native && !marker.disabled){native.open=!native.open;marker.setAttribute('aria-expanded',String(native.open));}};
+      }
+      marker.className='lj-script-peek '+(appearance.replyHeading?'lj-wait-custom':'lj-wait-default');
+      if(marker.querySelector('.lj-wait-label').textContent!==label)marker.querySelector('.lj-wait-label').textContent=label;
+      marker.querySelector('.lj-wait-book').hidden=Boolean(appearance.replyHeading);
+      applyGenerationWaitStyle(marker, appearance.replyStyle);
+      const native=row.querySelector('.mes_reasoning_details');
+      const saved=typeof message.extra?.reasoning==='string' && message.extra.reasoning.trim() || native?.querySelector('.mes_reasoning')?.textContent.trim();
+      marker.disabled=!saved || !native;marker.title=marker.disabled?'该条消息没有保存可展开的思考内容':'展开或收起这条消息已保存的思考内容';
+      marker.setAttribute('aria-expanded',String(Boolean(native?.open)));row.classList.add('lj-has-script-peek');
+    }
+  }
+  function mountGenerationWait(context) {
+    let node=null, session='';
+    function sync() {if(typeof syncThinkingLabels==='function')syncThinkingLabels();}
+    function stop() {node?.remove();node=null;session='';sync();}
+    function position() {
+      if(!node)return;
+      const current=ctx();
+      if(branchSession(current)!==session || chatAppearance()!=='mufy'){stop();return;}
+      let userIndex = -1, replyIndex = -1;
+      for (let index = 0; index < current.chat.length; index++) {
+        const message = current.chat[index];
+        if (!isStoryMessageForDisplay(message)) continue;
+        if (message.is_user) {
+          userIndex = index;
+          replyIndex = -1;
+        } else {
+          replyIndex = index;
+        }
+      }
+      const reply=replyIndex>=0?D.querySelector('#chat > .mes[mesid="'+replyIndex+'"] .mes_block'):null;
+      const user=userIndex>=0?D.querySelector('#chat > .mes[mesid="'+userIndex+'"]'):null;
+      if(reply){if(reply.firstElementChild!==node)reply.prepend(node);}
+      else if(user){if(user.nextElementSibling!==node)user.after(node);}
+      else if(!node.isConnected)$('#chat')?.append(node);
+      sync();
+    }
+    function start(type, options, dryRun) {
+      if(dryRun || type==='quiet' || type==='impersonate' || route!=='chat' || chatAppearance()!=='mufy')return;
+      stop();
+      const current=ctx(), role=selected(), appearance=activeCharacterBanner(role), custom=appearance.replyHeading, label=custom||'偷看剧本中';
+      const chat=$('#chat');if(!role || !chat || !current?.chatId)return;
+      session=branchSession(current);
+      node=D.createElement('div');node.className='lj-generation-wait '+(custom?'lj-wait-custom':'lj-wait-default');node.setAttribute('role','status');
+      node.setAttribute('aria-live','polite');node.setAttribute('aria-label','正在等待模型完成回复');
+      applyGenerationWaitStyle(node, appearance.replyStyle);
+      const title=D.createElement('span');title.className='lj-wait-label';title.textContent=label;
+      const dots=D.createElement('span');dots.className='lj-wait-dots';dots.setAttribute('aria-hidden','true');dots.textContent='···';
+      if(!custom){const book=D.createElement('span');book.className='lj-wait-book';book.setAttribute('aria-hidden','true');node.append(book);}
+      node.append(title,dots);position();
+    }
+    for(const [name,handler] of [['GENERATION_STARTED',start],['STREAM_TOKEN_RECEIVED',position],
+      ['MESSAGE_SENT',position],['USER_MESSAGE_RENDERED',position],['CHARACTER_MESSAGE_RENDERED',position],
+      ['MESSAGE_RECEIVED',position],['GENERATION_ENDED',stop],['GENERATION_STOPPED',stop],['CHAT_CHANGED',stop]]) {
+      const type=context.eventTypes[name];if(!type)continue;
+      context.eventSource.on(type,handler);listeners.push(()=>context.eventSource.removeListener(type,handler));
+    }
+    listeners.push(()=>{node?.remove();node=null;});
+  }
+  function applyGenerationWaitStyle(element, palette = {}) {
+    element.classList.toggle('lj-wait-framed', Boolean(palette.border && palette.background));
+    for (const key of ['color', 'shadow', 'hover', 'border', 'background']) {
+      const property = '--lj-wait-' + key;
+      if (palette[key]) element.style.setProperty(property, palette[key]);
+      else element.style.removeProperty(property);
+    }
+  }
+  function isStoryMessageForDisplay(message) {
+    // BBS marks summarized dialogue as system to omit it from generation context.
+    // The rows still belong to the displayed conversation.
+    return Boolean(message && (!message.is_system || message.extra?.bbs_hidden === true) && !branchBacklogNotice(message));
+  }
   function bgSettings() { const c=selected(); return c ? (ctx().chatMetadata?.[KEY]?.background || preferences().backgrounds[c.avatar] || {mode:'default',dim:.42,blur:3}) : {dim:.42,blur:3}; }
   function chatPage() {
     const c=selected();if(!c)return '<div class="lj-main"><div class="lj-empty">请先选择一个角色。</div></div>';
     const bg=bgSettings();
-    return `<div class="lj-chat-background" style="--lj-dim:${Number(bg.dim)||0};--lj-blur:${Number(bg.blur)||0}px"><img src="${escapeHtml(bg.url || avatar(c))}" alt=""></div><header class="lj-chat-header"><button class="lj-iconbutton" data-action="page-back" aria-label="返回${escapeHtml(pageTrail.at(-1)?.label||'对话列表')}">${icon('back')}</button><img src="${escapeHtml(thumb(c))}" alt=""><strong>${escapeHtml(archiveTitle(ctx().chatId || c.name))}</strong><button type="button" class="lj-iconbutton" data-action="page-sound" aria-label="页面静音"></button><button class="lj-iconbutton" data-action="background" aria-label="聊天背景设置">${icon('sun')}</button><button class="lj-iconbutton" data-action="details" aria-label="角色资料">${icon('panel')}</button></header>${chatProfile(c)}`;
+    return `<div class="lj-chat-background" style="--lj-dim:${Number(bg.dim)||0};--lj-blur:${Number(bg.blur)||0}px"><img src="${escapeHtml(bg.url || avatar(c))}" alt=""></div><header class="lj-chat-header"><button class="lj-iconbutton" data-action="page-back" aria-label="返回${escapeHtml(pageTrail.at(-1)?.label||'对话列表')}">${icon('back')}</button><img class="lj-lumeow-only" src="${escapeHtml(thumb(c))}" alt=""><strong class="lj-lumeow-only">${escapeHtml(archiveTitle(ctx().chatId || c.name))}</strong><div class="lj-mufy-only lj-chat-identity"><img src="${escapeHtml(thumb(c))}" alt=""><div><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(tags(c).slice(0,4).join(" / "))}</small></div></div><button type="button" class="lj-iconbutton" data-action="page-sound" aria-label="页面静音"></button><button class="lj-iconbutton" data-action="background" aria-label="聊天背景设置">${icon('sun')}</button><button class="lj-iconbutton lj-mufy-only" data-action="chat-sessions-menu" aria-label="对话与存档">${icon('chat')}</button><button class="lj-iconbutton" data-action="details" aria-label="角色资料">${icon('panel')}</button></header>${chatProfile(c)}`;
   }
   function ensureToolbar() {
     if(!$('#form_sheld'))return;
     if(!toolbar){toolbar=D.createElement('div');toolbar.className='lj-native-tools';$('#form_sheld').before(toolbar);on(toolbar,'click',handleClick);}
     toolbar.hidden=route!=='chat' && !D.body.classList.contains('lj-reading-tool');
-    toolbar.innerHTML=`<button class="lj-toolbar-preset" data-action="pair-picker" aria-label="选择预设和模型" title="选择预设和模型">${icon('preset')}<span>${escapeHtml(pairToolbarLabel())}</span></button><button class="lj-toolbar-box" data-action="toolbox">${icon('panel')}工具箱</button>`;
+    toolbar.innerHTML=`<button class="lj-mufy-only lj-mufy-retry" data-action="chat-regenerate" aria-label="分支重说最后一条角色回复">${messageIcon('retry')}<span>重说</span></button><button class="lj-toolbar-preset" data-action="pair-picker" aria-label="选择预设和模型" title="选择预设和模型">${icon('preset')}<span>${escapeHtml(pairToolbarLabel())}</span></button><button class="lj-toolbar-box" data-action="toolbox">${icon('panel')}工具箱</button>`;
     const right = $('#rightSendForm');
+    if(right && !right.querySelector('.lj-mufy-toolbox')) {
+      const box=D.createElement('button');box.type='button';box.className='lj-mufy-only lj-mufy-toolbox';
+      box.title='聊天工具箱';box.setAttribute('aria-label','聊天工具箱');
+      // Original Mufy chest geometry is served by the CSS asset.
+      right.prepend(box);on(box,'click',toolbox);listeners.push(()=>box.remove());
+    }
     if (right && !right.querySelector('.lj-input-more')) {
       const more = D.createElement('button');
       more.type = 'button';
@@ -4522,6 +4857,7 @@ export function releaseThemeSettings() {
     D.body.classList.toggle('lj-reading-tool',behindTool);
     D.body.classList.toggle('lj-chat',route==='chat' || behindTool);
     D.body.classList.toggle('lj-native-open',Boolean(nativeTitle));
+    applyChatAppearance();
     const pages={home:()=>homePage(),creator:()=>homePage(true),recent:recentPage,presets:presetsPage,'preset-editor':bookEditor,worlds:worldsPage,settings:settingsPage,usage:usagePage,workspace:settingsWorkspace,'world-editor':worldEditor};
     const content=route==='chat'?chatPage():`<main class="lj-main">${(pages[route] || pages.home)()}</main>`;
     root.innerHTML=sideBar()+content+bottomNav();
@@ -4532,6 +4868,8 @@ export function releaseThemeSettings() {
     syncCardWidgets();
     applyStoryStyle();
     ensureToolbar();
+    ensureCharacterBanner();
+    previewCharacterBanner();
     if(route==='chat'&&selected()){refreshShallowProfile(selected()).catch(()=>{});decorateMessages();}
     syncChatReading(route==='chat'?pairScope():'');
   }
@@ -4608,7 +4946,7 @@ export function releaseThemeSettings() {
   }
   function modal(name,html,width='760px') {
     const overlay=D.createElement('div');suspendDialog(overlay,dialogName(visibleDialog())===name);
-    const parent=dialogParents.get(overlay), back=parent?`<button class="lj-iconbutton" data-action="close-modal" aria-label="返回${escapeHtml(dialogName(parent.layer))}">${icon('back')}</button>`:route==='chat'?chatReturnButton():'';
+    const parent=dialogParents.get(overlay), back=parent?.layer===pairDialog?.layer?'':parent?`<button class="lj-iconbutton" data-action="close-modal" aria-label="返回${escapeHtml(dialogName(parent.layer))}">${icon('back')}</button>`:route==='chat'?chatReturnButton():'';
     overlay.className='lj-modal-backdrop';overlay.innerHTML=`<section class="lj-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(name)}" style="max-width:${width}"><header class="lj-modal-header">${back}<strong>${escapeHtml(name)}</strong><button class="lj-iconbutton" data-action="close-modal" aria-label="关闭">${icon('close')}</button></header><div class="lj-modal-content">${html}</div></section>`;portal.append(overlay);overlay.querySelector('button')?.focus();return overlay;
   }
   function backgroundModal() {
@@ -4883,6 +5221,9 @@ export function releaseThemeSettings() {
       if(action==='tool-return')await returnToToolChat();
       else if(action==='clean-parameter-presets')await cleanParameterPresets();
       else if(action==='pair-picker')await openPairPicker();
+      else if(action==='chat-appearance')setChatAppearance(el.dataset.skin);
+      else if(action==='close-chat-banner')closeCharacterBanner();
+      else if(action==='chat-sessions-menu')chatSessionMenu();
       else if(action.startsWith('book-'))await bookAction(action.slice(5),el);
       else if(action==='home-cover-upload')chooseLibraryFile('image/*',file=>uploadHomeBanner(file,el.closest('.lj-modal-backdrop')));
       else if(action==='primary-route')openPrimaryPage(el.dataset.page);
@@ -4952,7 +5293,8 @@ export function releaseThemeSettings() {
           source.dispatchEvent(new W.MouseEvent('click',{bubbles:true,cancelable:true,shiftKey:event.shiftKey,altKey:event.altKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey}));
         }else source.click();
         W.setTimeout(refreshWorkspaceFields,250);}
-      else if(action==='save-character'){$('#create_button')?.click();toast('角色资料已提交保存');}
+      else if(action==='delete-character')requestCharacterDelete(el.dataset.avatar);
+      else if(action==='save-character'){await saveCharacterBanner();preserveLocalCharacterAppearance(selected());$('#create_button')?.click();toast('角色资料已提交保存');}
       else if(action==='create-group'){$('#rm_button_group_chats')?.click();workspaceTab='群聊与管理';render();}
       else if(action==='character-actions')await openOriginalView('characters',el);
       else if(action==='extension-install')extensionInstallModal();
@@ -5063,6 +5405,12 @@ export function releaseThemeSettings() {
       if(!originalView && toolOrigin && route==='chat' && !e.target.closest('#lj-portal,dialog,.TH-popup,.lj-chat-command-panel') && !portal.querySelector('.lj-modal-backdrop'))toolOrigin=null;
     },true);
     const handleInput=event=>{
+      if(event.target.id==='lj-character-banner'){characterBannerDrafts.set(event.target.dataset.bannerAvatar,event.target.value);previewCharacterBanner();return;}
+      if(event.target.dataset.bannerStyle){
+        const c=selected(),owner=event.target.closest('[data-banner-owner]')?.dataset.bannerOwner;
+        if(c?.avatar===owner){const style={...(characterBannerStyleDrafts.get(owner)||characterBannerStyle(c)),[event.target.dataset.bannerStyle]:event.target.value};characterBannerStyleDrafts.set(owner,style);previewCharacterBanner();}
+        return;
+      }
       if(event.target.dataset.source){if(!event.target.matches('select,input[type="checkbox"],input[type="radio"],input[type="file"]'))changeSource(event.target,false);return;}
       if(event.target.dataset.worldProperty){updateWorldProperty(event.target);return;}
       if(event.target.id==='lj-world-search'){worldSearch=event.target.value;const position=event.target.selectionStart;render();$('#lj-world-search')?.focus();return;}
@@ -5085,10 +5433,11 @@ export function releaseThemeSettings() {
       }
       if(event.key!=='Escape'||event.defaultPrevented||!D.body.classList.contains('lj-active')||D.querySelector('dialog[open], .TH-popup[role="dialog"]'))return;
       if(archivePopup){dismissArchiveMenu();return;}
-      if(pairDialog){pairDialog.close();return;}
+      if(pairDialog && !pairDialog.editing){pairDialog.close();return;}
       const layer=visibleDialog();
       if(layer){const close=layer.querySelector('[data-action="close-modal"]');if(close)close.click();else closeDialog(layer);return;}
       if(D.body.classList.contains('lj-details-open')){D.body.classList.remove('lj-details-open');return;}
+      if(route==='preset-editor' && book?.pairOrigin){void bookAction('picker-close',null);return;}
       if(route==='preset-editor' && book?.history){void bookAction('back',null);return;}
       void backPage();
     });
@@ -5105,15 +5454,30 @@ export function releaseThemeSettings() {
       context.eventSource.on(worldSettingsEvent,syncBooks);
       listeners.push(()=>context.eventSource.removeListener(worldSettingsEvent,syncBooks));
     }
-    mountArchiveResume(context);mountChatReading(context);mountPairing(context);mountCardWidgets();mountStoryMemory(context);mountBooks();mountBanner();
+    mountArchiveResume(context);mountChatReading(context);mountPairing(context);mountCardWidgets();mountStoryMemory(context);mountBooks();mountBanner();mountGenerationWait(context);
     render();scheduleCounts();syncMemoryPrompt();
     observeDialogs();observeMessages();loadControlLabels();loadRoleWorlds();
   }
-  function cleanup(){disposed=true;dismissOriginalView();W.clearTimeout(refreshTimer);W.clearTimeout(toastTimer);listeners.splice(0).forEach(f=>{try{f();}catch(_){}});observers.forEach(o=>o.disconnect());all('.lj-message-actions').forEach(e=>e.remove());all('.lj-adapted-popup,.lj-command-back').forEach(e=>e.remove());all('.lj-chat-command-panel').forEach(e=>e.classList.remove('lj-chat-command-panel'));all('.lj-adapted-dialog').forEach(e=>e.classList.remove('lj-adapted-dialog','lj-vue-dialog'));root?.remove();portal?.remove();style?.remove();removeThemeSwitch?.();toolbar?.remove();D.body.classList.remove('lj-active','lj-chat','lj-reading-tool','lj-native-open','lj-details-open','lj-profile-collapsed');D.documentElement.style.removeProperty('--lj-height');D.getElementById('lj-story-style')?.remove();if(activeMemoryPrompt)ctx()?.setExtensionPrompt(KEY,'',1,1,false,0);delete W.__LANJIU_LUMEOW_UI__;}
+  function cleanup(){disposed=true;dismissOriginalView();W.clearTimeout(refreshTimer);W.clearTimeout(toastTimer);listeners.splice(0).forEach(f=>{try{f();}catch(_){}});observers.forEach(o=>o.disconnect());all('.lj-message-actions,.lj-script-peek,.lj-generation-wait').forEach(e=>e.remove());all('.lj-has-script-peek').forEach(e=>e.classList.remove('lj-has-script-peek'));all('.lj-adapted-popup,.lj-command-back').forEach(e=>e.remove());all('.lj-chat-command-panel').forEach(e=>e.classList.remove('lj-chat-command-panel'));all('.lj-adapted-dialog').forEach(e=>e.classList.remove('lj-adapted-dialog','lj-vue-dialog'));D.getElementById('lj-character-banner-bar')?.remove();root?.remove();portal?.remove();style?.remove();removeThemeSwitch?.();toolbar?.remove();D.body.classList.remove('lj-active','lj-chat','lj-reading-tool','lj-native-open','lj-details-open','lj-profile-collapsed','lj-chat-mufy');D.documentElement.style.removeProperty('--lj-height');D.getElementById('lj-story-style')?.remove();if(activeMemoryPrompt)ctx()?.setExtensionPrompt(KEY,'',1,1,false,0);delete W.__LANJIU_LUMEOW_UI__;}
+  async function loadLocalCharacterAppearances() {
+    try {
+      const response = await W.fetch(new URL('./local-chat-appearance.json?v=' + VERSION, import.meta.url), {
+        cache: 'no-cache', signal: W.AbortSignal.timeout(4000),
+      });
+      if (!response.ok) return;
+      const value = await response.json();
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        localCharacterAppearances = new Map(Object.entries(value));
+      }
+    } catch (error) {
+      console.warn('[建设主题] 读取本地聊天美化失败', error);
+    }
+  }
   async function start() {
     if(!ctx()?.extensionSettings){W.setTimeout(start,600);return;}
     if(W.__LANJIU_LUMEOW_UI__)return;
     W.__LANJIU_LUMEOW_UI__={version:VERSION,cleanup};
+    await loadLocalCharacterAppearances();
     if(preferences().enabled)mount();
     else removeThemeSwitch = installThemeSwitch();
     frame.addEventListener('pagehide',cleanup,{once:true});

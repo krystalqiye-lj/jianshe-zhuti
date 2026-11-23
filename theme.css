@@ -259,8 +259,8 @@ body.lj-active.lj-chat #nonQRFormItems {align-items:center;min-height:44px}
 body.lj-active.lj-chat #rightSendForm {align-self:flex-end;align-items:center;padding-right:7px;padding-bottom:6px}
 body.lj-active.lj-chat #rightSendForm :is(#send_but,.lj-input-more) {margin:0;width:32px;height:32px;flex:none;box-sizing:border-box;border:0;border-radius:50%;background:linear-gradient(113deg,#7c3aed,#6366f1)!important;color:#fff;cursor:pointer}
 body.lj-active.lj-chat .lj-input-more {display:none;align-items:center;justify-content:center;padding:0}
-body.lj-active.lj-chat:not([data-generating=true]) #send_form:has(#send_textarea:placeholder-shown):not(:has(#file_form:not(.displayNone))) .lj-input-more {display:flex}
-body.lj-active.lj-chat:not([data-generating=true]) #send_form:has(#send_textarea:placeholder-shown):not(:has(#file_form:not(.displayNone))) #send_but,
+body.lj-active.lj-chat:not(.lj-chat-mufy):not([data-generating=true]) #send_form:has(#send_textarea:placeholder-shown):not(:has(#file_form:not(.displayNone))) .lj-input-more {display:flex}
+body.lj-active.lj-chat:not(.lj-chat-mufy):not([data-generating=true]) #send_form:has(#send_textarea:placeholder-shown):not(:has(#file_form:not(.displayNone))) #send_but,
 body.lj-active.lj-chat[data-generating=true] #send_but {display:none!important}
 body.lj-active [data-lj-widget-away] {display:none!important;visibility:hidden!important;pointer-events:none!important}
 /* Anchor dialogs to our sized portal on mobile, including hosts that transform fixed children. */
@@ -981,3 +981,153 @@ body:has(.lj-mask-layer) :is(#lj-root,#sheld) {filter:blur(4px);}
 #lj-portal .lj-archive-advanced{margin-top:20px}#lj-portal .lj-archive-advanced summary{cursor:pointer;color:#b7a5de;line-height:1.7;padding:8px 0}
 #lj-portal .lj-archives-sheet .lj-modal-header strong{flex:1;text-align:center}
 #lj-portal .lj-archives-sheet .lj-modal-header::after{content:"";width:34px;flex:none}
+
+/* Appearance is limited to native outer chat chrome. Never style card descendants. */
+.lj-active #lj-character-banner-bar { position:relative;display:block;flex:none;width:calc(100% - 32px);max-width:880px;margin:10px auto 0;font:inherit;box-sizing:border-box; }
+.lj-active #lj-character-banner-bar[hidden] { display:none!important; }
+.lj-active #lj-character-banner-bar > span { min-width:0;flex:1;white-space:pre-wrap;overflow-wrap:anywhere;max-height:106px;overflow:auto; }
+.lj-active #lj-character-banner-bar > button { display:grid;place-items:center;flex:none;align-self:flex-start;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:24px;line-height:1;cursor:pointer; }
+.lj-active #lj-character-banner-bar > button:hover { background:#ffffff14; }
+.lj-active #lj-character-banner-bar > button:focus-visible { outline:2px solid #c0a5ff;outline-offset:-2px; }
+#lj-root #lj-character-banner { display:block;width:100%;margin-top:10px;resize:vertical; }
+#lj-root .lj-banner-style-fields { display:flex;flex-wrap:wrap;gap:14px;margin:14px 0; }
+#lj-root .lj-banner-style-fields label { display:flex;gap:8px;align-items:center; }
+#lj-root .lj-banner-style-fields input[type="color"] { width:44px;height:36px;padding:3px; }
+#lj-root .lj-banner-editor > details { margin-top:12px; }
+#lj-root .lj-banner-editor textarea[data-banner-style] { width:100%; }
+#lj-root .lj-banner-editor input[type="url"] { display:block;width:100%;margin:8px 0; }
+.lj-active .lj-mufy-only { display:none!important; }
+.lj-active.lj-chat-mufy .lj-mufy-only { display:inline-flex!important; }
+.lj-active.lj-chat-mufy #sheld {
+  top:64px!important;
+  height:calc(var(--lj-height) - 64px)!important;
+}
+.lj-chat-mufy #lj-root .lj-chat-header {
+  height:64px;
+  background:rgba(24,24,30,.94);
+  border-bottom:1px solid #ffffff13;
+  gap:10px;
+}
+.lj-chat-mufy #lj-root .lj-chat-header > img { width:40px;height:40px;border-radius:50%; }
+.lj-chat-mufy #lj-root .lj-chat-header > .lj-iconbutton { border-radius:8px; }
+.lj-active.lj-chat-mufy #chat { padding:18px clamp(16px,3vw,48px)!important; }
+.lj-active.lj-chat-mufy #chat > .mes { max-width:880px;padding-top:18px;padding-bottom:18px; }
+.lj-active.lj-chat-mufy #form_sheld { max-width:880px!important;padding:8px 18px max(16px,env(safe-area-inset-bottom))!important; }
+.lj-active.lj-chat-mufy #send_form { border:1px solid #ffffff20!important;border-radius:14px!important;background:rgba(40,40,49,.94)!important; }
+.lj-active.lj-chat-mufy #send_textarea { min-height:38px;max-height:180px; }
+.lj-active.lj-chat-mufy .lj-native-tools { max-width:880px;padding:6px 18px 0;gap:8px; }
+.lj-active.lj-chat-mufy .lj-native-tools > button { border-radius:9px;background:#383546;border-color:#ffffff14;min-height:34px; }
+.lj-active.lj-chat-mufy .lj-native-tools > .lj-mufy-retry { align-items:center;gap:5px;flex:none; }
+.lj-active.lj-chat-mufy .lj-mufy-retry svg { width:16px;height:16px;fill:none;stroke:currentColor; }
+.lj-chat-mufy #chat > .mes > .lj-message-actions > [data-lj-msg="copy"],
+.lj-chat-mufy #chat > .mes > .lj-message-actions > [data-lj-msg="retry"] { display:none; }
+.lj-chat-mufy #chat > .mes > .lj-message-actions > [data-lj-msg="menu"] { border-radius:8px;background:#59599a;color:#fff; }
+.lj-chat-mufy #lj-portal .lj-msg-popover { border-radius:10px; }
+
+#lj-root .lj-appearance-settings { margin-bottom:18px; }
+#lj-root .lj-appearance-options { display:flex;gap:10px;flex-wrap:wrap;margin-top:12px; }
+#lj-root .lj-appearance-options [aria-pressed="true"] { border-color:#a98aff;background:#342b49;color:#d5c5ff; }
+#lj-portal .lj-pair-item { display:grid;grid-template-columns:minmax(0,1fr) 40px;align-items:stretch;gap:6px;min-width:0;flex:none; }
+#lj-portal .lj-pair-item[hidden] { display:none!important; }
+#lj-portal .lj-pair-item .lj-pair-card { width:100%;min-width:0;height:100%; }
+#lj-portal .lj-pair-item .lj-pair-edit { display:flex;align-items:center;justify-content:center;min-height:44px;width:40px;border:1px solid #45424e;border-radius:11px;background:#24232b;color:#c7b7f4; }
+#lj-portal .lj-pair-edit:hover { background:#393144; }
+#lj-portal .lj-pair-edit:focus-visible { outline:2px solid #c0a5ff;outline-offset:-3px; }
+@media (max-width:767px) {
+  .lj-chat-mufy #lj-root .lj-chat-header { padding:8px 10px;gap:6px; }
+  .lj-chat-mufy #lj-root .lj-chat-header > img { width:34px;height:34px; }
+  .lj-chat-mufy #lj-root .lj-chat-header > .lj-iconbutton { width:30px;height:36px;flex:none; }
+  .lj-active.lj-chat-mufy #chat { padding:12px 14px!important; }
+  .lj-active.lj-chat-mufy #form_sheld { padding:8px 14px max(12px,env(safe-area-inset-bottom))!important; }
+  .lj-active.lj-chat-mufy .lj-native-tools { padding:6px 14px 0; }
+  .lj-active.lj-chat-mufy .lj-native-tools > .lj-mufy-retry { padding:6px 8px; }
+  .lj-active.lj-chat-mufy .lj-mufy-retry span { display:none; }
+  #lj-portal .lj-pair-left .lj-pair-item { width:230px;max-width:85%;flex-shrink:0;scroll-snap-align:start; }
+}
+
+#lj-root .lj-form-actions .lj-character-delete{color:#f3a4a4;border-color:#9c4f4f;background:#512b2b33}
+
+/* Mufy chat controls, matched to the user's reference. Lumeow tools stay shared. */
+body.lj-active.lj-chat-mufy #lj-root .lj-chat-header{background:transparent;border-bottom:0;padding:8px 16px;gap:8px}
+body.lj-chat-mufy #lj-root .lj-chat-header>.lj-lumeow-only{display:none}
+body.lj-chat-mufy #lj-root .lj-chat-identity{display:flex!important;align-items:center;gap:8px;min-width:0;max-width:310px;margin-right:auto;background:#171717d9;border-radius:18px;padding:6px 12px 6px 6px}
+body.lj-chat-mufy #lj-root .lj-chat-identity>img{width:36px;height:36px;flex:none;border-radius:50%;object-fit:cover}
+body.lj-chat-mufy #lj-root .lj-chat-identity>div{min-width:0}
+body.lj-chat-mufy #lj-root .lj-chat-identity strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
+body.lj-chat-mufy #lj-root .lj-chat-identity small{display:block;font-size:10px;line-height:16px;color:#cdced2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.lj-chat-mufy #lj-root .lj-chat-header>.lj-iconbutton{width:32px;height:32px;flex:none;border:1px solid #626266;border-radius:9px;background:transparent;color:#a6a7af;padding:6px;box-shadow:none}
+body.lj-active.lj-chat.lj-chat-mufy #form_sheld{max-width:640px!important;padding:0 16px 16px!important}
+body.lj-active.lj-chat.lj-chat-mufy #send_form,body.lj-active.lj-chat.lj-chat-mufy #send_form:focus-within{display:flex;align-items:center;min-height:52px;padding:0 12px 0 16px!important;border:0!important;border-radius:16px!important;background:#383848!important;backdrop-filter:none;box-shadow:none}
+body.lj-active.lj-chat.lj-chat-mufy #send_textarea{min-height:52px!important;max-height:200px;padding:16px 0!important;margin:0!important;font-size:14px;line-height:20px;color:#d1d1db}
+body.lj-active.lj-chat.lj-chat-mufy #send_textarea::placeholder{color:#888894;opacity:1}
+body.lj-active.lj-chat.lj-chat-mufy #leftSendForm{display:none}
+body.lj-active.lj-chat.lj-chat-mufy #rightSendForm{align-self:center;align-items:center;display:flex;gap:10px;padding:0 0 0 12px;flex:none}
+body.lj-active.lj-chat.lj-chat-mufy #rightSendForm .lj-input-more{display:none!important}
+body.lj-active.lj-chat.lj-chat-mufy #rightSendForm #send_but{display:grid;width:34px;height:24px;margin:0 0 0 2px;padding:0 0 0 10px;border:0;border-left:1px solid #737380;border-radius:0;background:transparent!important;color:#a2a3b0!important;font-size:18px!important;box-shadow:none}
+body.lj-active.lj-chat.lj-chat-mufy .lj-mufy-toolbox{display:flex!important;align-items:center;justify-content:center;width:26px;height:28px;padding:0;border:0;background:transparent;color:#9e9eac;cursor:pointer}
+body.lj-active.lj-chat.lj-chat-mufy .lj-mufy-toolbox svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+body.lj-active.lj-chat.lj-chat-mufy .lj-native-tools{max-width:640px;padding:6px 16px;gap:4px;overflow:hidden}
+body.lj-active.lj-chat.lj-chat-mufy .lj-native-tools>.lj-toolbar-box{display:none}
+body.lj-active.lj-chat.lj-chat-mufy .lj-native-tools>button{height:28px;min-height:28px;max-width:calc(100% - 68px);padding:3px 9px;font-size:14px;line-height:20px;border:0;border-radius:8px;background:#343445;color:#d6d5e1;box-shadow:none}
+body.lj-active.lj-chat.lj-chat-mufy .lj-native-tools>.lj-mufy-retry{background:#5c5798;color:#f2f0ff;gap:4px;flex:none;max-width:none}
+body.lj-active.lj-chat.lj-chat-mufy .lj-mufy-retry span{display:inline}
+body.lj-active.lj-chat.lj-chat-mufy .lj-toolbar-preset{display:flex;gap:5px;align-items:center;min-width:0}
+body.lj-active.lj-chat.lj-chat-mufy .lj-toolbar-preset>svg{display:none}
+body.lj-active.lj-chat.lj-chat-mufy .lj-toolbar-preset::before{content:"✦";font-size:18px}
+body.lj-active.lj-chat.lj-chat-mufy .lj-toolbar-preset>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.lj-chat-mufy #chat>.mes>.lj-message-actions>[data-lj-msg="menu"]{width:36px;height:28px;border:1px solid #646466;border-radius:8px;background:#1111114d;color:#eee;box-shadow:none}
+body.lj-chat-mufy #lj-character-banner-bar{max-width:720px;margin-top:8px}
+@media(max-width:767px){body.lj-chat-mufy #lj-root .lj-chat-header{padding:6px 8px;gap:5px}body.lj-chat-mufy #lj-root .lj-chat-header>.lj-iconbutton{width:28px;height:28px;padding:4px}body.lj-chat-mufy #lj-root .lj-chat-identity{padding:4px 7px 4px 4px;gap:5px;border-radius:14px}body.lj-chat-mufy #lj-root .lj-chat-identity>img{width:28px;height:28px}body.lj-chat-mufy #lj-root .lj-chat-identity strong{font-size:12px}body.lj-chat-mufy #lj-root .lj-chat-identity small{font-size:9px}body.lj-active.lj-chat.lj-chat-mufy #form_sheld{padding:0 12px max(12px,env(safe-area-inset-bottom))!important}body.lj-active.lj-chat.lj-chat-mufy .lj-native-tools{padding:5px 12px}}
+
+body.lj-active.lj-chat.lj-chat-mufy #send_textarea{text-align:left!important;resize:none}body.lj-active.lj-chat.lj-chat-mufy #send_textarea::placeholder{text-align:left!important}
+
+/* Mufy original SVG geometry, extracted from the user's loaded reference page. */
+body.lj-active.lj-chat.lj-chat-mufy #rightSendForm .lj-mufy-toolbox::before{content:"";display:block;width:24px;height:24px;background:url('./mufy-chest.svg') center/contain no-repeat}
+body.lj-active.lj-chat.lj-chat-mufy #rightSendForm #send_but::before{content:""!important;display:block;width:20px;height:20px;background:#9ca3af;-webkit-mask:url('./mufy-send.svg') center/contain no-repeat;mask:url('./mufy-send.svg') center/contain no-repeat}
+/* Adapted from the VRS Mufy card's “美化助手-漓的Zero” style, not global site CSS.
+   Only a role's explicitly configured opening may enable this decoration. */
+
+/* Waiting layout before the assistant reply row exists. */
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait{display:flex;align-items:center;gap:8px;flex:none;width:min(100%,880px);margin:14px auto;padding:6px 0;background:transparent;border:0;box-shadow:none;color:#F5F5F5;font-family:'KingHwa_OldSong','Songti SC','Noto Serif SC',serif}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait.lj-wait-custom .lj-wait-label{font-size:14px;letter-spacing:2px;font-weight:600;color:var(--lj-wait-color,#F5F5F5);text-shadow:0 0 12px var(--lj-wait-shadow,#DCDCDC);transition:text-shadow .3s ease}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait.lj-wait-custom:hover .lj-wait-label{text-shadow:0 0 18px var(--lj-wait-hover,#B0C4DE),0 0 25px var(--lj-wait-hover,#B0C4DE)}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait .lj-wait-dots{font-size:16px;letter-spacing:3px;animation:lj-wait-pulse 1.25s ease-in-out infinite}
+@keyframes lj-wait-pulse{0%,100%{opacity:.25}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){body.lj-active.lj-chat-mufy #chat>.lj-generation-wait .lj-wait-dots{animation:none}}
+
+/* Banner and extra generation chrome belong exclusively to the Mufy layout. */
+body.lj-active:not(.lj-chat-mufy) #lj-character-banner-bar,body.lj-active:not(.lj-chat-mufy) #chat>.lj-generation-wait{display:none!important}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait.lj-wait-default{color:#a3a3a3;font-family:Arial,"PingFang SC",sans-serif;font-size:12px}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait.lj-wait-default .lj-wait-label{font-size:12px;letter-spacing:0;text-shadow:none;font-weight:400}
+body.lj-active.lj-chat-mufy #chat>.lj-generation-wait .lj-wait-book{display:inline-block;flex:none;width:14px;height:14px;background:currentColor;-webkit-mask:url('./mufy-thinking.svg') center/contain no-repeat;mask:url('./mufy-thinking.svg') center/contain no-repeat}
+
+/* Keep the original thinking entry above each completed reply, including history. */
+body.lj-active.lj-chat-mufy #chat .lj-script-peek,body.lj-active.lj-chat-mufy #chat .lj-generation-wait{display:flex;align-items:center;gap:6px;max-width:100%;margin:0 0 14px;padding:6px 0;border:0;background:transparent;box-shadow:none;text-align:left}
+body.lj-active.lj-chat-mufy #chat .lj-script-peek{cursor:pointer;color:#a3a3a3;font-family:Arial,"PingFang SC",sans-serif;font-size:12px}
+body.lj-active.lj-chat-mufy #chat .lj-script-peek:disabled{cursor:default;opacity:1}
+body.lj-active.lj-chat-mufy #chat .lj-script-peek.lj-wait-custom .lj-wait-label{font-family:'KingHwa_OldSong','Songti SC','Noto Serif SC',serif;font-size:14px;letter-spacing:2px;font-weight:600;color:var(--lj-wait-color,#F5F5F5);text-shadow:0 0 12px var(--lj-wait-shadow,#DCDCDC)}
+body.lj-active.lj-chat-mufy #chat .lj-script-peek.lj-wait-custom:hover .lj-wait-label{text-shadow:0 0 18px var(--lj-wait-hover,#B0C4DE),0 0 25px var(--lj-wait-hover,#B0C4DE)}
+body.lj-active.lj-chat-mufy #chat .lj-wait-book{display:inline-block;flex:none;width:14px;height:14px;background:currentColor;-webkit-mask:url('./mufy-thinking.svg') center/contain no-repeat;mask:url('./mufy-thinking.svg') center/contain no-repeat}
+body.lj-active.lj-chat-mufy #chat .lj-wait-book[hidden]{display:none}
+body.lj-active.lj-chat-mufy #chat>.mes.lj-has-script-peek .mes_reasoning_details:not([open]){display:none}
+body.lj-active.lj-chat-mufy #chat>.mes.lj-has-script-peek .mes_reasoning_details[open]{display:block}
+body.lj-active:not(.lj-chat-mufy) #chat .lj-script-peek,body.lj-active:not(.lj-chat-mufy) #chat .lj-generation-wait{display:none!important}
+body.lj-active.lj-chat-mufy #chat .lj-generation-wait .lj-wait-label{font-size:12px}
+body.lj-active.lj-chat-mufy #chat .lj-generation-wait.lj-wait-custom .lj-wait-label{font-size:14px;letter-spacing:2px;font-weight:600;color:var(--lj-wait-color,#F5F5F5);text-shadow:0 0 12px var(--lj-wait-shadow,#DCDCDC)}
+body.lj-active.lj-chat-mufy #chat .lj-generation-wait .lj-wait-dots{letter-spacing:3px;animation:lj-wait-pulse 1.25s ease-in-out infinite}
+
+body.lj-active.lj-chat-mufy #chat :is(.lj-script-peek, .lj-generation-wait).lj-wait-framed {
+  width: fit-content;
+  padding: 6px 14px;
+  border: 1px solid var(--lj-wait-border);
+  border-radius: 4px;
+  background: var(--lj-wait-background);
+  color: var(--lj-wait-color, #fff);
+}
+body.lj-active.lj-chat-mufy #chat :is(.lj-script-peek, .lj-generation-wait).lj-wait-custom.lj-wait-framed .lj-wait-label {
+  font-family: 'Songti SC', SimSun, 'Noto Serif SC', serif;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: normal;
+  text-shadow: none;
+}
