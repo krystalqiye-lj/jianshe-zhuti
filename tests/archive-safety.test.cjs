@@ -36,6 +36,7 @@ function fixture({messages=conversation(),metadata={},diskMessages=messages,disk
     W:{setTimeout},KEY:key,ctx:context,chatLoadDepth:0,chatWriteDepth:0,chatSaveQueue:Promise.resolve(),openingCharacter:false,returningPage:false,openingStory:false,branchBusy:false,archiveBusy:false,
     chatHost:async()=>({isChatSaving:false,is_send_press:false}),
     selected:()=>({name:'角色',avatar:state.avatar}),
+    preserveLocalCharacterAppearance(){},
     storyResources:()=>['开场一','开场二'],storyMeta:()=>({}),openingLabel:i=>'开场白'+(i+1),
     portal:{querySelector:()=>({remove(){}})},toast:t=>toasts.push(t),navigate(){},applyStoryStyle(){},bgSettings:()=>({}),chatFile:s=>String(s).replace(/\.jsonl$/,''),
     post:async(_url,body)=>{
