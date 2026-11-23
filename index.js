@@ -28,7 +28,7 @@ export function releaseThemeSettings() {
 
 (function (frame) {
   'use strict';
-    const VERSION = '0.4.30';
+    const VERSION = '0.4.31';
   function countRounds(messages) {
     let waiting = false, count = 0;
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -5415,6 +5415,11 @@ export function releaseThemeSettings() {
       if(event.target.dataset.worldProperty){updateWorldProperty(event.target);return;}
       if(event.target.id==='lj-world-search'){worldSearch=event.target.value;const position=event.target.selectionStart;render();$('#lj-world-search')?.focus();return;}
       if(event.target.id==='lj-settings-search'){workspaceSearch=event.target.value;refreshWorkspaceFields();return;}
+      if(event.target.id==='lj-search' && (route==='home' || route==='creator')){
+        search=event.target.value;
+        root.querySelector('#lj-character-grid').outerHTML=cards();
+        return;
+      }
       if(event.target.id==='lj-search'){search=event.target.value;const position=event.target.selectionStart;const main=root.querySelector('.lj-main');const scroll=main?.scrollTop||0;render();const field=$('#lj-search');field?.focus();if(field?.type!=='search')field?.setSelectionRange(position,position);if(root.querySelector('.lj-main'))root.querySelector('.lj-main').scrollTop=scroll;}
       else if(event.target.id==='lj-bg-dim'){setBackground({dim:Number(event.target.value)/100,mode:'custom'});$('#lj-dim-value').textContent=event.target.value+'%';}
       else if(event.target.id==='lj-bg-blur'){setBackground({blur:Number(event.target.value),mode:'custom'});$('#lj-blur-value').textContent=event.target.value+'px';}
